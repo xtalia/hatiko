@@ -10,5 +10,5 @@ num2words
 streamlit
 Flask
 FLask-CORS
-psycopg2psycopg2-binary
+psycopg2-binary
 gunicorn
