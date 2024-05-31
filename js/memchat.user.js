@@ -13,6 +13,7 @@
     'use strict';
 
     console.log('Main userscript loaded');
+    const superserver = 'mem.1721671-cu28683.twc1.net:5000';
 
     // Function to show all tab contents
     function showAllTabContents() {
@@ -119,7 +120,7 @@
     function checkPrice() {
         const query = document.getElementById('priceCheckInput').value.trim();
         if (query !== '') {
-            const url = `http://127.0.0.1:5000/memchat?query=${encodeURIComponent(query)}`;
+            const url = `http://${superserver}/memchat?query=${encodeURIComponent(query)}`;
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
@@ -149,7 +150,7 @@
     }
 
     function forceUpdate() {
-        const url = 'http://127.0.0.1:5000/memchat?force=true';
+        const url = `http://${superserver}/memchat?force=true`;
         GM_xmlhttpRequest({
             method: 'GET',
             url: url,
@@ -170,7 +171,7 @@
     }
 
     // Functions for who_works
-    const WHO_WORKS_SERVER_URL = 'http://localhost:5000/who_work';
+    const WHO_WORKS_SERVER_URL = 'http://${superserver}/who_work';
 
     function createFloatingWindow(content) {
         const window = document.createElement('div');
@@ -258,7 +259,7 @@
     function fetchWhoWorks(day) {
         GM_xmlhttpRequest({
             method: 'GET',
-            url: `${WHO_WORKS_SERVER_URL}?day=${day}`,
+            url: `http://${superserver}/who_work?day=${day}`,
             onload: function(response) {
                 if (response.status === 200) {
                     const contentType = response.responseHeaders.match(/content-type:\s*([\w\/\-]+)/i)[1];
@@ -280,7 +281,7 @@
     }
 
     function fetchMemchat(query) {
-        const MEMCHAT_SERVER_URL = 'http://127.0.0.1:5000/memchat';
+        const MEMCHAT_SERVER_URL = `http://${superserver}/memchat`;
         GM_xmlhttpRequest({
             method: 'GET',
             url: `${MEMCHAT_SERVER_URL}?query=${encodeURIComponent(query)}`,
