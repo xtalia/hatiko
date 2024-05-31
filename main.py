@@ -132,7 +132,11 @@ def handle_serial_number_cutter(message):
 # Кто работает сегодня или завтра
 @bot.message_handler(func=lambda message: message.text.lower() in config.WW_TRIGGERS)
 def handle_who_work(message):
-    who_work.who_work(bot, message)
+    markup = types.InlineKeyboardMarkup()
+    today_button = types.InlineKeyboardButton(text='Сегодня', callback_data='today')
+    tomorrow_button = types.InlineKeyboardButton(text='Завтра', callback_data='tomorrow')
+    markup.add(today_button, tomorrow_button)
+    bot.send_message(message.chat.id, "Хочешь узнать кто работает?", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data in ['today', 'tomorrow'])
 def handle_ww_callback_query(call):
