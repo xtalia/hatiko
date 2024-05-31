@@ -1,0 +1,12 @@
+{
+    "bot": {
+        "token": "",
+        "token_debug": ""
+    },
+    "db":{
+        "login": "",
+        "pass": "",
+        "host": "",
+        "db": ""
+    }
+}
