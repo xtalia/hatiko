@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Price Calculator
 // @namespace    https://github.com/xtalia/vscode/blob/main/memchat/js/price_calculator.js
-// @version      1.5.3
+// @version      1.5.6
 // @description  Добавляет окошко для расчета цен с возможностью сворачивания и вывода результатов в текстовое поле, а также с функцией для расчета скидки
 // @author       Serg
 // @match        https://online.moysklad.ru/*
@@ -19,7 +19,7 @@
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; cursor: pointer;';
 
         const title = document.createElement('span');
-        title.textContent = '🧮 Калькулятор 1.5.2';
+        title.textContent = '🧮 Калькулятор 1.5.6';
         title.style.fontWeight = 'bold';
         title.style.fontSize = '14px';
         header.appendChild(title);
@@ -67,18 +67,18 @@
             let credit_month = 36;
 
             if (mode === 'all') {
-                qr_price = Math.round(cash * 1.0401 / 100) * 100 - 10;
-                card_price = Math.round(cash * 1.0501 / 100) * 100 - 10;
-                rassrochka_price_six = Math.round(cash * 1.1001 / 100) * 100 - 10;
-                rassrochka_price_ten = Math.round(cash * 1.1301 / 100) * 100 - 10;
-                credit_price = Math.round(cash * 1.2001 / 100) * 100 - 10;
+                qr_price = Math.round(cash * 1.041 / 100) * 100 - 10;
+                card_price = Math.round(cash * 1.051 / 100) * 100 - 10;
+                rassrochka_price_six = Math.round(cash * 1.101 / 100) * 100 - 10;
+                rassrochka_price_ten = Math.round(cash * 1.131 / 100) * 100 - 10;
+                credit_price = Math.round(cash * 1.201 / 100) * 100 - 10;
                 cashback_amount = Math.round(cash * 0.01);
             } else if (mode === 'balakovo') {
-                qr_price = Math.round(cash * 1.01501 / 100) * 100 - 10;
-                card_price = Math.round(cash * 1.0301 / 100) * 100 - 10;
-                rassrochka_price_six = Math.round(cash * 1.0701 / 100) * 100 - 10;
-                rassrochka_price_ten = Math.round(cash * 1.1001 / 100) * 100 - 10;
-                credit_price = Math.round(cash * 1.1801 / 100) * 100 - 10;
+                qr_price = Math.round(cash * 1.0151 / 100) * 100 - 10;
+                card_price = Math.round(cash * 1.031 / 100) * 100 - 10;
+                rassrochka_price_six = Math.round(cash * 1.071 / 100) * 100 - 10;
+                rassrochka_price_ten = Math.round(cash * 1.101 / 100) * 100 - 10;
+                credit_price = Math.round(cash * 1.181 / 100) * 100 - 10;
                 cashback_amount = Math.round(cash * 0.01);
             }
 
