@@ -10,7 +10,10 @@
 
 (function() {
     'use strict';
-
+    // Проверка на запуск в iframe
+    if (window.self !== window.top) {
+        return; // Прекратить выполнение скрипта, если он запущен в iframe
+    }
     function createCalculator() {
         const container = document.createElement('div');
         container.style.cssText = 'position: fixed; bottom: 10px; right: 10px; width: 250px; background: linear-gradient(to bottom right, #f0f0f0, #e0e0e0); border: 1px solid #ccc; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 15px; z-index: 1000;';
