@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Clear Text on Enter After Processing (Toggle Enabled)
+// @name         Очистка текста после Enter (с возможностью включения)
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.3
 // @description  Очищает текстовое поле после нажатия Enter и завершения обработки на сайте (по умолчанию отключено). Возможность включения и отключения через меню.
 // @author       Ваше Имя
 // @match        *://*/*
@@ -12,50 +12,31 @@
 (function() {
     'use strict';
 
-    let enabled = false;  // По умолчанию отключено
-    let enableCommandId;
-    let disableCommandId;
+    let enabled = false;  // По умолчанию скрипт отключен
+    let commandId;
 
-    // Функция, которая выполняет выделение и удаление текста
+    // Функция очистки текста после нажатия Enter
     function clearText(event) {
         if (event.key === "Enter" && enabled) {
             setTimeout(() => {
-                event.target.select();
-                event.target.value = "";
-            }, 0);  // Срабатывает сразу после выполнения стандартного кода на сайте
+                event.target.value = ""; // Очистка текстового поля
+            }, 0);  // Выполняется после обработки ввода на странице
         }
     }
 
-    // Функция включения скрипта
-    function enableScript() {
-        if (!enabled) {
-            enabled = true;
-            updateMenu();
-        }
+    // Функция переключения состояния скрипта (включение/отключение)
+    function toggleScript() {
+        enabled = !enabled;
+        updateMenu();
     }
 
-    // Функция отключения скрипта
-    function disableScript() {
-        if (enabled) {
-            enabled = false;
-            updateMenu();
-        }
-    }
-
-    // Функция обновления пунктов меню
+    // Функция обновления пункта меню
     function updateMenu() {
-        if (enableCommandId) {
-            GM_unregisterMenuCommand(enableCommandId);
+        if (commandId) {
+            GM_unregisterMenuCommand(commandId);
         }
-        if (disableCommandId) {
-            GM_unregisterMenuCommand(disableCommandId);
-        }
-        
-        if (enabled) {
-            disableCommandId = GM_registerMenuCommand("Disable Text Clear on Enter", disableScript);
-        } else {
-            enableCommandId = GM_registerMenuCommand("Enable Text Clear on Enter", enableScript);
-        }
+        const menuText = enabled ? "Отключить очистку текста по Enter" : "Включить очистку текста по Enter";
+        commandId = GM_registerMenuCommand(menuText, toggleScript);
     }
 
     // Инициализация
