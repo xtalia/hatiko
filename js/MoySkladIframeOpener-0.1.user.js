@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MoySklad iframe opener
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  try to take over the world!
 // @author       You
 // @match        https://online.moysklad.ru/*
@@ -29,7 +29,7 @@
 
     function createModalWindow() {
         let modalWindow = document.createElement('div');
-        modalWindow.style = `
+        modalWindow.style.cssText = `
             position: fixed; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             border: 1px solid #ccc; border-radius: 5px;
@@ -44,8 +44,8 @@
     function createIframe(src) {
         let iframe = document.createElement('iframe');
         iframe.src = src;
-        iframe.style = 'width: 100%; height: calc(100% - 30px); border: none;';
-        iframe.sandbox = 'allow-scripts allow-same-origin';
+        iframe.style.cssText = 'width: 100%; height: calc(100% - 30px); border: none;';
+        // Удален атрибут sandbox, чтобы элементы в iframe могли работать нормально
         iframe.addEventListener('error', () => {
             alert('Ошибка загрузки контента. Пожалуйста, проверьте соединение.');
         });
@@ -54,7 +54,7 @@
 
     function createHeader(modalWindow) {
         let header = document.createElement('div');
-        header.style = `
+        header.style.cssText = `
             position: absolute; top: 0; left: 0;
             width: 100%; height: 30px; background: #f0f0f0;
             border-bottom: 1px solid #ccc; text-align: center;
@@ -63,10 +63,10 @@
         header.textContent = 'Мой Склад Мини';
 
         let closeButton = createButton('✖', () => closeWindow(modalWindow));
-        closeButton.style = 'position: absolute; right: 5px; top: 5px;';
+        closeButton.style.cssText = 'position: absolute; right: 5px; top: 5px;';
 
         let collapseButton = createButton('▲', () => collapseWindow(modalWindow));
-        collapseButton.style = 'position: absolute; right: 35px; top: 5px;';
+        collapseButton.style.cssText = 'position: absolute; right: 35px; top: 5px;';
 
         header.appendChild(closeButton);
         header.appendChild(collapseButton);
@@ -77,7 +77,7 @@
     function createButton(text, onClick) {
         let button = document.createElement('button');
         button.textContent = text;
-        button.style = `
+        button.style.cssText = `
             border: none; background: transparent;
             cursor: pointer; font-size: 14px;
         `;
@@ -94,7 +94,7 @@
         modalWindow.style.display = 'none';
         let expandButton = document.createElement('button');
         expandButton.textContent = '▶ Развернуть';
-        expandButton.style = `
+        expandButton.style.cssText = `
             position: fixed; left: 10px; top: 50%;
             transform: translateY(-50%); z-index: 9999;
         `;
