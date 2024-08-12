@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MoySklad iframe opener
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.6
 // @description  Открыть MoySklad в iframe с возможностью копирования текущего URL
 // @author       You
 // @match        https://online.moysklad.ru/*
@@ -12,13 +12,22 @@
 (function() {
     'use strict';
     let openWindows = [];
+    let linkUrl = ''; // Ссылка для открытия
 
     GM_registerMenuCommand('Открыть MoySklad в iframe', openMoySkladIframe);
     GM_registerMenuCommand('Закрыть все окна', closeAllWindows);
 
+    document.addEventListener('contextmenu', function(event) {
+        if (event.target.tagName === 'A' && event.target.href) {
+            linkUrl = event.target.href;
+        } else {
+            linkUrl = ''; // Если клик не по ссылке, сбрасываем
+        }
+    });
+
     function openMoySkladIframe() {
         let modalWindow = createModalWindow();
-        let iframeSrc = 'https://online.moysklad.ru/app/#customerorder/edit?new';
+        let iframeSrc = linkUrl || 'https://online.moysklad.ru/app/#customerorder/edit?new';
         let iframe = createIframe(iframeSrc);
         let header = createHeader(modalWindow, iframe);
 
