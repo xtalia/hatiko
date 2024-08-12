@@ -15,6 +15,13 @@
     console.log('Main userscript loaded');
     const superserver = 'mem.1721671-cu28683.twc1.net:5000';
 
+    GM_addStyle(`
+        .tab-content .hidden {
+            display: block !important;
+            visibility: visible !important;
+        }
+    `);
+    
     // Function to show all tab contents
     function showAllTabContents() {
         const hiddenElements = document.querySelectorAll('.tab-content .hidden');
