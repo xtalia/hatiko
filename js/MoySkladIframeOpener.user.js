@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         MoySklad iframe opener
 // @namespace    http://tampermonkey.net/
-// @version      0.3
-// @description  try to take over the world!
+// @version      0.5
+// @description  Открыть MoySklad в iframe с возможностью копирования текущего URL
 // @author       You
 // @match        https://online.moysklad.ru/*
 // @grant        GM_registerMenuCommand
@@ -20,7 +20,7 @@
         let modalWindow = createModalWindow();
         let iframeSrc = 'https://online.moysklad.ru/app/#customerorder/edit?new';
         let iframe = createIframe(iframeSrc);
-        let header = createHeader(modalWindow, iframeSrc);
+        let header = createHeader(modalWindow, iframe);
 
         modalWindow.appendChild(header);
         modalWindow.appendChild(iframe);
@@ -52,7 +52,7 @@
         return iframe;
     }
 
-    function createHeader(modalWindow, iframeSrc) {
+    function createHeader(modalWindow, iframe) {
         let header = document.createElement('div');
         header.style.cssText = `
             position: absolute; top: 0; left: 0;
@@ -62,24 +62,20 @@
         `;
         header.textContent = 'Мой Склад Мини';
 
-        let linkInput = document.createElement('input');
-        linkInput.type = 'text';
-        linkInput.value = iframeSrc;
-        linkInput.readOnly = true;
-        linkInput.style.cssText = `
-            margin-left: 10px; width: 400px; 
-            font-size: 14px; border: none; background: #f0f0f0;
-        `;
-
         let closeButton = createButton('✖', () => closeWindow(modalWindow));
         closeButton.style.cssText = 'position: absolute; right: 5px; top: 5px;';
 
         let collapseButton = createButton('▲', () => collapseWindow(modalWindow));
         collapseButton.style.cssText = 'position: absolute; right: 35px; top: 5px;';
 
-        header.appendChild(linkInput);
+        let copyButton = createButton('⧉', () => copyIframeURL(iframe));
+        copyButton.style.cssText = 'position: absolute; right: 65px; top: 5px;';
+
+        let urlField = createURLField();
         header.appendChild(closeButton);
         header.appendChild(collapseButton);
+        header.appendChild(copyButton);
+        header.appendChild(urlField);
         header.addEventListener('mousedown', moveHandler.bind(null, modalWindow));
         return header;
     }
@@ -93,6 +89,43 @@
         `;
         button.addEventListener('click', onClick);
         return button;
+    }
+
+    function createURLField() {
+        let urlField = document.createElement('input');
+        urlField.type = 'text';
+        urlField.readOnly = true;
+        urlField.style.cssText = `
+            position: absolute; left: 100px; top: 5px; right: 90px;
+            height: 20px; background: white; border: 1px solid #ccc;
+            padding: 2px; display: none; font-size: 12px;
+        `;
+        return urlField;
+    }
+
+    function copyIframeURL(iframe) {
+        try {
+            let currentURL = iframe.contentWindow.location.href;
+            navigator.clipboard.writeText(currentURL).then(() => {
+                alert('URL скопирован: ' + currentURL);
+            }).catch(() => {
+                toggleURLField(currentURL);
+            });
+        } catch (e) {
+            let fallbackURL = iframe.src;
+            toggleURLField(fallbackURL);
+        }
+    }
+
+    function toggleURLField(url) {
+        let urlField = document.querySelector('input[type="text"]');
+        if (urlField.style.display === 'none') {
+            urlField.style.display = 'block';
+            urlField.value = url;
+        } else {
+            urlField.style.display = 'none';
+            urlField.value = '';
+        }
     }
 
     function closeWindow(modalWindow) {
