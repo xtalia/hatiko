@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат
 // @namespace    http://tampermonkey.net/
-// @version      1.7.0
+// @version      1.7.1
 // @description  Набор скриптов
 // @match        https://online.moysklad.ru/*
 // @grant        GM_xmlhttpRequest
