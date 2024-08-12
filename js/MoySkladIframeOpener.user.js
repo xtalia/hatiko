@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MoySklad iframe opener
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  try to take over the world!
 // @author       You
 // @match        https://online.moysklad.ru/*
@@ -18,8 +18,9 @@
 
     function openMoySkladIframe() {
         let modalWindow = createModalWindow();
-        let iframe = createIframe('https://online.moysklad.ru/app/#customerorder/edit?new');
-        let header = createHeader(modalWindow);
+        let iframeSrc = 'https://online.moysklad.ru/app/#customerorder/edit?new';
+        let iframe = createIframe(iframeSrc);
+        let header = createHeader(modalWindow, iframeSrc);
 
         modalWindow.appendChild(header);
         modalWindow.appendChild(iframe);
@@ -45,14 +46,13 @@
         let iframe = document.createElement('iframe');
         iframe.src = src;
         iframe.style.cssText = 'width: 100%; height: calc(100% - 30px); border: none;';
-        // Удален атрибут sandbox, чтобы элементы в iframe могли работать нормально
         iframe.addEventListener('error', () => {
             alert('Ошибка загрузки контента. Пожалуйста, проверьте соединение.');
         });
         return iframe;
     }
 
-    function createHeader(modalWindow) {
+    function createHeader(modalWindow, iframeSrc) {
         let header = document.createElement('div');
         header.style.cssText = `
             position: absolute; top: 0; left: 0;
@@ -62,12 +62,22 @@
         `;
         header.textContent = 'Мой Склад Мини';
 
+        let linkInput = document.createElement('input');
+        linkInput.type = 'text';
+        linkInput.value = iframeSrc;
+        linkInput.readOnly = true;
+        linkInput.style.cssText = `
+            margin-left: 10px; width: 400px; 
+            font-size: 14px; border: none; background: #f0f0f0;
+        `;
+
         let closeButton = createButton('✖', () => closeWindow(modalWindow));
         closeButton.style.cssText = 'position: absolute; right: 5px; top: 5px;';
 
         let collapseButton = createButton('▲', () => collapseWindow(modalWindow));
         collapseButton.style.cssText = 'position: absolute; right: 35px; top: 5px;';
 
+        header.appendChild(linkInput);
         header.appendChild(closeButton);
         header.appendChild(collapseButton);
         header.addEventListener('mousedown', moveHandler.bind(null, modalWindow));
