@@ -69,10 +69,10 @@
                 <div id="priceCheckControls">
                     <input type="text" id="priceCheckInput" placeholder="Введите запрос...">
                     <button id="priceCheckButton">🤖</button> <!-- Кнопка с эмодзи робота -->
-                    <button id="hatikoButton">🐕</button> <!-- Кнопка с эмодзи песика -->
+                    <button id="hatikoButton">🐶</button> <!-- Кнопка с эмодзи песика -->
                 </div>
                 <div>
-                    <textarea id="priceCheckResult" style="width: 100%; height: 200px; resize: vertical;" readonly></textarea>
+                    <textarea id="priceCheckResult" style="width: 100%; height: 300px; resize: vertical;" readonly></textarea>
                 </div>
                 <span id="priceCheckCloseButton" style="position: absolute; top: 5px; right: 10px; cursor: pointer;">&#10006;</span>
             `;
@@ -204,7 +204,7 @@
     }
 
     function resetTextareaHeight() {
-        document.getElementById('priceCheckResult').style.height = '200px';
+        document.getElementById('priceCheckResult').style.height = '280px';
     }
 
     function forceUpdate() {
