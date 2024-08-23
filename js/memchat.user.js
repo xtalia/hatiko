@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат
 // @namespace    http://tampermonkey.net/
-// @version      1.7.1
+// @version      1.7.2
 // @description  Набор скриптов
 // @match        https://online.moysklad.ru/*
 // @grant        GM_xmlhttpRequest
@@ -39,7 +39,7 @@
             container.style.top = '10px';
             container.style.right = '10px';
             container.style.width = '360px';
-            container.style.height = '300px';
+            container.style.height = '350px'; // Увеличиваем высоту, чтобы разместить вторую кнопку
             container.style.backgroundColor = '#f0f0f0';
             container.style.border = '1px solid #ccc';
             container.style.padding = '10px';
@@ -51,6 +51,7 @@
                 <div>Введите запрос:</div>
                 <input type="text" id="priceCheckInput" style="width: 70%; margin-bottom: 5px;">
                 <button id="priceCheckButton">Проверить</button>
+                <button id="hatikoButton" style="margin-left: 10px;">Hatiko</button> <!-- Новая кнопка -->
                 <div>
                     <textarea id="priceCheckResult" style="width: 100%; height: 200px; resize: vertical;" readonly></textarea>
                 </div>
@@ -64,6 +65,9 @@
 
             const checkButton = document.getElementById('priceCheckButton');
             checkButton.addEventListener('click', checkPrice);
+
+            const hatikoButton = document.getElementById('hatikoButton');
+            hatikoButton.addEventListener('click', checkHatiko); // Привязываем новую функцию к кнопке
 
             const inputField = document.getElementById('priceCheckInput');
             inputField.addEventListener('keypress', function(event) {
@@ -95,6 +99,34 @@
         window.priceCheckContainer.style.display = 'block';
         document.getElementById('priceCheckInput').focus();
         resetTextareaHeight();
+    }
+
+    function checkHatiko() {
+        const query = document.getElementById('priceCheckInput').value.trim();
+        if (query !== '') {
+            const url = `http://${superserver}/memchat?hatiko=${encodeURIComponent(query)}`;
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                onload: function(response) {
+                    if (response.status === 200) {
+                        document.getElementById('priceCheckResult').value = response.responseText;
+                        resetTextareaHeight();
+                    } else {
+                        document.getElementById('priceCheckResult').value = 'Ошибка при выполнении запроса';
+                    }
+                },
+                onerror: function() {
+                    document.getElementById('priceCheckResult').value = 'Ошибка при выполнении запроса';
+                }
+            });
+        } else {
+            document.getElementById('priceCheckResult').value = 'Введите запрос';
+            resetTextareaHeight();
+        }
     }
 
     let isDragging = false;
@@ -178,7 +210,7 @@
     }
 
     // Functions for who_works
-    const WHO_WORKS_SERVER_URL = 'http://${superserver}/who_work';
+    const WHO_WORKS_SERVER_URL = `http://${superserver}/who_work`;
 
     function createFloatingWindow(content) {
         const window = document.createElement('div');
