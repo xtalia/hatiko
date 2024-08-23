@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат
 // @namespace    http://tampermonkey.net/
-// @version      1.7.2
+// @version      1.7.3
 // @description  Набор скриптов
 // @match        https://online.moysklad.ru/*
 // @grant        GM_xmlhttpRequest
@@ -20,8 +20,26 @@
             display: block !important;
             visibility: visible !important;
         }
+        #priceCheckContainer {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        #priceCheckControls {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+        #priceCheckInput {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        #priceCheckButton, #hatikoButton {
+            font-size: 20px;
+            margin-left: 10px;
+        }
     `);
-    
+
     // Function to show all tab contents
     function showAllTabContents() {
         const hiddenElements = document.querySelectorAll('.tab-content .hidden');
@@ -48,10 +66,11 @@
 
             container.innerHTML = `
                 <div id="priceCheckHeader">Проверка цен</div>
-                <div>Введите запрос:</div>
-                <input type="text" id="priceCheckInput" style="width: 70%; margin-bottom: 5px;">
-                <button id="priceCheckButton">Проверить</button>
-                <button id="hatikoButton" style="margin-left: 10px;">Hatiko</button> <!-- Новая кнопка -->
+                <div id="priceCheckControls">
+                    <input type="text" id="priceCheckInput" placeholder="Введите запрос...">
+                    <button id="priceCheckButton">🤖</button> <!-- Кнопка с эмодзи робота -->
+                    <button id="hatikoButton">🐕</button> <!-- Кнопка с эмодзи песика -->
+                </div>
                 <div>
                     <textarea id="priceCheckResult" style="width: 100%; height: 200px; resize: vertical;" readonly></textarea>
                 </div>
@@ -88,8 +107,8 @@
                     margin-bottom: 10px;
                     user-select: none;
                 }
-                #priceCheckButton {
-                    margin-top: 5px;
+                #priceCheckButton, #hatikoButton {
+                    font-size: 20px; /* Устанавливаем размер шрифта для кнопок */
                 }
             `);
 
