@@ -125,7 +125,7 @@ def format_response(item):
 💰 🅻: {item['price_lipetsk']} {'😀 проходим' if item['price_lipetsk'] >= item['recommended_lipetsk'] else '😢 не проходим'} 
 💰 🅱️: {item['price_balakovo']} {'😀 проходим' if item['price_balakovo'] >= item['recommended_balakovo'] else '😢 не проходим'} 
 
-Отдаем? Сможете привезти?
+🤔 Отдаем? Сможете привезти?
 """
 # 📦 Есть: 🆂 {item['store_saratov']}, 🆅 {item['store_voronezh']}, 🅻 {item['store_lipetsk']}, 🅱️ {item['store_balakovo']}
 # 💖 Рекомендуемые цены: 🆂 {item['recommended_saratov']}, 🆅 {item['recommended_voronezh']}, 🅻 {item['recommended_lipetsk']}, 🅱️ {item['recommended_balakovo']}
