@@ -18,9 +18,9 @@ import who_work
 from sn_cutter import sn_cutter
 from usd_rate import handle_usd_rate
 import genpdf
-from phone_classifier import process_model_input 
+from phone_classifier import process_model_input
 if config.cred_json != "":
-    from postgresloader import update_cache, handle_query, send_data 
+    from postgresloader import update_cache, handle_query, send_data
 
 
 directory = os.path.dirname(os.path.abspath(__file__))
@@ -154,7 +154,7 @@ def start_usd_rate(message):
     handle_usd_rate(bot, message)
 
 ## Классификатор Авито
-@bot.message_handler(func=lambda message: message.text.lower() in config.CLASSIFICATOR_TRIGGERS)  
+@bot.message_handler(func=lambda message: message.text.lower() in config.CLASSIFICATOR_TRIGGERS)
 def handle_classifier_command(message):
     # Отправляем запрос на поиск по Model
     bot.send_message(message.chat.id, "Что вы хотите найти по Model?")
@@ -162,7 +162,7 @@ def handle_classifier_command(message):
 
 ## Генерация документа для трейд-ин
 @bot.message_handler(func=lambda message: message.text.lower() in config.GENPDF_TRIGGERS)
-def handle_generate_pdf(message):  
+def handle_generate_pdf(message):
     genpdf.start_survey(bot, message)
 
 ### Обработчики команд
@@ -182,7 +182,7 @@ def export_config(message):
             callback_data = f'export_config_{file}'
             button = types.InlineKeyboardButton(file, callback_data=callback_data)
             keyboard.add(button)
-        
+
         bot.send_message(message.chat.id, "Выберите файл для экспорта:", reply_markup=keyboard)
 
 
@@ -190,7 +190,7 @@ def export_config(message):
 def handle_export_config(callback_query):
     file_name = callback_query.data.replace('export_config_', '')
     file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
-    
+
     with open(file_path, 'rb') as file:
         bot.send_document(callback_query.message.chat.id, file)
         bot.send_message(callback_query.message.chat.id, f"Модуль {file_name} выгружен.")
@@ -202,11 +202,11 @@ def handle_config_file(message):
         downloaded_file = bot.download_file(file_info.file_path)
         dir_path = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(dir_path, message.document.file_name)
-        
+
         # Сохранение файла
         with open(file_path, 'wb') as new_config_file:
             new_config_file.write(downloaded_file)
-        
+
         bot.send_message(message.chat.id, "Модуль был сохранен.")
         os.execl(sys.executable, sys.executable, *sys.argv)
     elif message.from_user.id != 184944023:
@@ -225,22 +225,22 @@ def handle_message(message):
         result = send_data(message.text)
         bot.send_message(chat_id, result)
         return
-           
+
     if str(message.from_user.id) in config.GRANTED:
         search_query = message.text
         result = handle_query(search_query)
-        
+
         if result:
             parts = result.split("Отдаем? Сможете привезти?")
-            
+
             for part in parts:
                 if part.strip():  # Убедимся, что часть не пустая
                     bot.send_message(chat_id, part.strip() + "\nОтдаем? Сможете привезти?")
         else:
             bot.send_message(chat_id, "Ошибка")
-    else:    
+    else:
         bot.send_message(chat_id, f"В доступе отказано. Сообщите ваш ID {message.from_user.id} Сергею, чтобы он вас добавил")
 
 if __name__ == '__main__':
-    
+
     main()
