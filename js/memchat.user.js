@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат
 // @namespace    http://tampermonkey.net/
-// @version      1.7.6
+// @version      1.7.61
 // @description  Набор скриптов
 // @match        https://online.moysklad.ru/*
 // @grant        GM_xmlhttpRequest
@@ -122,10 +122,10 @@
 
 // Список базовых URL
 const baseUrls = [
-    "https://hatiko.ru/search/?query=",
-    "https://voronezh.hatiko.ru/search/?query=",
-    "https://lipetsk.hatiko.ru/search/?query=",
-    "https://balakovo.hatiko.ru/search/?query="
+    "https://hatiko.ru",
+    "https://voronezh.hatiko.ru",
+    "https://lipetsk.hatiko.ru",
+    "https://balakovo.hatiko.ru"
 ];
 
 // Функция для парсинга HTML и извлечения нужных данных
@@ -135,9 +135,10 @@ function parseHTML(responseText) {
     const product = doc.querySelector("a.s-product-header");
     if (product) {
         const title = product.getAttribute("title");
-        const link = product.getAttribute("href");
+        const relativeLink = product.getAttribute("href");
         const priceElement = doc.querySelector("span.price");
         const price = priceElement ? priceElement.textContent.replace(" ", "") : "Нет данных";
+        const link = new URL(relativeLink, baseUrls[0]).href; // Формируем полный URL
         return { title, price, link };
     }
     return { title: "Нет данных", price: "Нет данных", link: "Нет данных" };
@@ -147,7 +148,7 @@ function parseHTML(responseText) {
 function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (query !== '') {
-        const urls = baseUrls.map(url => `${url}${encodeURIComponent(query)}`);
+        const urls = baseUrls.map(url => `${url}/search/?query=${encodeURIComponent(query)}`);
         let results = [];
         let requestsCompleted = 0;
 
@@ -157,7 +158,7 @@ function checkHatiko() {
                 url: url,
                 onload: function(response) {
                     const data = parseHTML(response.responseText);
-                    results[index] = { ...data, url: baseUrls[index] + data.link };
+                    results[index] = { ...data, link: `${baseUrls[index]}${new URL(data.link).pathname}` }; // Добавляем правильный базовый URL
                     requestsCompleted++;
                     if (requestsCompleted === urls.length) {
                         let messageText = `🧭 ${results[0].title}\n`;
@@ -165,10 +166,10 @@ function checkHatiko() {
                         messageText += `🪙🆅 ${results[1].price}\n`;
                         messageText += `🪙🅻 ${results[2].price}\n`;
                         messageText += `🪙🗿 ${results[3].price}\n\n`;
-                        messageText += `🌐🆂: ${results[0].url}\n`;
-                        messageText += `🌐🆅: ${results[1].url}\n`;
-                        messageText += `🌐🅻: ${results[2].url}\n`;
-                        messageText += `🌐🗿: ${results[3].url}`;
+                        messageText += `🌐🆂: ${results[0].link}\n`;
+                        messageText += `🌐🆅: ${results[1].link}\n`;
+                        messageText += `🌐🅻: ${results[2].link}\n`;
+                        messageText += `🌐🗿: ${results[3].link}`;
 
                         document.getElementById('priceCheckResult').value = messageText;
                         resetTextareaHeight();
@@ -184,6 +185,7 @@ function checkHatiko() {
         resetTextareaHeight();
     }
 }
+
 
     let isDragging = false;
     let offset = { x: 0, y: 0 };
