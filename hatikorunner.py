@@ -54,11 +54,10 @@ def memchat():
         update_cache(force=True)
         return jsonify("memchat cache update complete")
     elif request.args.get('hatiko', ''):
+        query = unquote(request.args.get('hatiko', ''))
+        answer = send_data(query)
+        return answer
         
-        pass
-        
-    
-    
     query = unquote(request.args.get('query', ''))
     answer = handle_query(query)
     return answer

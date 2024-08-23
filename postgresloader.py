@@ -125,9 +125,9 @@ def format_response(item):
 💰 🅻: {item['price_lipetsk']} {'😀 проходим' if item['price_lipetsk'] >= item['recommended_lipetsk'] else '😢 не проходим'} 
 💰 🅱️: {item['price_balakovo']} {'😀 проходим' if item['price_balakovo'] >= item['recommended_balakovo'] else '😢 не проходим'} 
 
-📦 Есть: 🆂 {item['store_saratov']}, 🆅 {item['store_voronezh']}, 🅻 {item['store_lipetsk']}, 🅱️ {item['store_balakovo']}
 Отдаем? Сможете привезти?
 """
+# 📦 Есть: 🆂 {item['store_saratov']}, 🆅 {item['store_voronezh']}, 🅻 {item['store_lipetsk']}, 🅱️ {item['store_balakovo']}
 # 💖 Рекомендуемые цены: 🆂 {item['recommended_saratov']}, 🆅 {item['recommended_voronezh']}, 🅻 {item['recommended_lipetsk']}, 🅱️ {item['recommended_balakovo']}
     return template.strip()
 
@@ -155,7 +155,7 @@ def handle_query(query):
         return "Invalid query"
 
 def send_data(message):
-    search_query = message.text # получаем текст сообщения от пользователя
+    search_query = message # получаем текст сообщения от пользователя
     for word in config.SITE_TRIGGERS: # для каждого слова в словаре
         search_query = search_query.replace (word, "")
     

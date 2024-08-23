@@ -222,7 +222,7 @@ def handle_message(message):
     chat_id = message.chat.id
     if any(trigger.lower() in message.text.lower() for trigger in config.SITE_TRIGGERS):
         bot.send_message(chat_id, "Ищу информацию на сайте Хатико")
-        result = send_data(message)
+        result = send_data(message.text)
         bot.send_message(chat_id, result)
         return
            
