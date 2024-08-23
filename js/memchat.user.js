@@ -120,33 +120,70 @@
         resetTextareaHeight();
     }
 
-    function checkHatiko() {
-        const query = document.getElementById('priceCheckInput').value.trim();
-        if (query !== '') {
-            const url = `http://${superserver}/memchat?hatiko=${encodeURIComponent(query)}`;
+// Список базовых URL
+const baseUrls = [
+    "https://hatiko.ru/search/?query=",
+    "https://voronezh.hatiko.ru/search/?query=",
+    "https://lipetsk.hatiko.ru/search/?query=",
+    "https://balakovo.hatiko.ru/search/?query="
+];
+
+// Функция для парсинга HTML и извлечения нужных данных
+function parseHTML(responseText) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(responseText, "text/html");
+    const product = doc.querySelector("a.s-product-header");
+    if (product) {
+        const title = product.getAttribute("title");
+        const link = product.getAttribute("href");
+        const priceElement = doc.querySelector("span.price");
+        const price = priceElement ? priceElement.textContent.replace(" ", "") : "Нет данных";
+        return { title, price, link };
+    }
+    return { title: "Нет данных", price: "Нет данных", link: "Нет данных" };
+}
+
+// Функция для выполнения запросов и формирования сообщения
+function checkHatiko() {
+    const query = document.getElementById('priceCheckInput').value.trim();
+    if (query !== '') {
+        const urls = baseUrls.map(url => `${url}${encodeURIComponent(query)}`);
+        let results = [];
+        let requestsCompleted = 0;
+
+        urls.forEach((url, index) => {
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
-                headers: {
-                    'Content-Type': 'application/json'
-                },
                 onload: function(response) {
-                    if (response.status === 200) {
-                        document.getElementById('priceCheckResult').value = response.responseText;
+                    const data = parseHTML(response.responseText);
+                    results[index] = { ...data, url: baseUrls[index] + data.link };
+                    requestsCompleted++;
+                    if (requestsCompleted === urls.length) {
+                        let messageText = `🧭 ${results[0].title}\n`;
+                        messageText += `🪙🆂 ${results[0].price}\n`;
+                        messageText += `🪙🆅 ${results[1].price}\n`;
+                        messageText += `🪙🅻 ${results[2].price}\n`;
+                        messageText += `🪙🗿 ${results[3].price}\n\n`;
+                        messageText += `🌐🆂: ${results[0].url}\n`;
+                        messageText += `🌐🆅: ${results[1].url}\n`;
+                        messageText += `🌐🅻: ${results[2].url}\n`;
+                        messageText += `🌐🗿: ${results[3].url}`;
+
+                        document.getElementById('priceCheckResult').value = messageText;
                         resetTextareaHeight();
-                    } else {
-                        document.getElementById('priceCheckResult').value = 'Ошибка при выполнении запроса';
                     }
                 },
                 onerror: function() {
                     document.getElementById('priceCheckResult').value = 'Ошибка при выполнении запроса';
                 }
             });
-        } else {
-            document.getElementById('priceCheckResult').value = 'Введите запрос';
-            resetTextareaHeight();
-        }
+        });
+    } else {
+        document.getElementById('priceCheckResult').value = 'Введите запрос';
+        resetTextareaHeight();
     }
+}
 
     let isDragging = false;
     let offset = { x: 0, y: 0 };
