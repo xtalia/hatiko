@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат
 // @namespace    http://tampermonkey.net/
-// @version      1.7.61
+// @version      1.7.611
 // @description  Набор скриптов
 // @match        https://online.moysklad.ru/*
 // @grant        GM_xmlhttpRequest
@@ -13,7 +13,7 @@
     'use strict';
 
     console.log('Main userscript loaded');
-    const superserver = 'mem.1721671-cu28683.twc1.net:5000';
+    const superserver = 'memchat.tw1.ru:5000';
 
     GM_addStyle(`
         .tab-content .hidden {

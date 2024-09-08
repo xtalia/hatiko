@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trade-In Calculator
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.11
 // @description  Calculate trade-in value for devices
 // @match        *://*/*
 // @grant        GM_registerMenuCommand
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const superserver = 'mem.1721671-cu28683.twc1.net:5000';
+    const superserver = 'memchat.tw1.ru:5000';
 
     let tradeInData = null;
 
