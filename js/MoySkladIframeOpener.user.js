@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MoySklad iframe opener
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.8
 // @description  Открыть MoySklad в iframe с возможностью копирования текущего URL
 // @author       You
 // @match        https://online.moysklad.ru/*
@@ -35,6 +35,9 @@
         modalWindow.appendChild(iframe);
         document.body.appendChild(modalWindow);
         openWindows.push(modalWindow);
+
+        // Поднятие окна на передний план при открытии
+        bringToFront(modalWindow);
     }
 
     function createModalWindow() {
@@ -63,11 +66,12 @@
 
     function createHeader(modalWindow, iframe) {
         let header = document.createElement('div');
+        let randomColor = getRandomLightColor();
         header.style.cssText = `
             position: absolute; top: 0; left: 0;
-            width: 100%; height: 30px; background: #f0f0f0;
+            width: 100%; height: 30px; background: ${randomColor};
             border-bottom: 1px solid #ccc; text-align: center;
-            line-height: 30px; cursor: move;
+            line-height: 30px; cursor: move; color: black;
         `;
         header.textContent = 'Мой Склад Мини';
 
@@ -86,6 +90,8 @@
         header.appendChild(copyButton);
         header.appendChild(urlField);
         header.addEventListener('mousedown', moveHandler.bind(null, modalWindow));
+
+        header.addEventListener('click', () => bringToFront(modalWindow)); // Поднятие окна на передний план при клике на заголовок
         return header;
     }
 
@@ -173,6 +179,20 @@
         document.addEventListener('mouseup', function() {
             document.removeEventListener('mousemove', mouseMoveHandler);
         });
+    }
+
+    function bringToFront(modalWindow) {
+        openWindows.forEach(w => {
+            w.style.zIndex = '999'; // Сброс z-index всех окон
+        });
+        modalWindow.style.zIndex = '1000'; // Поднимаем текущее окно
+    }
+
+    function getRandomLightColor() {
+        let r = Math.floor(Math.random() * 156 + 100); // Диапазон от 100 до 255
+        let g = Math.floor(Math.random() * 156 + 100);
+        let b = Math.floor(Math.random() * 156 + 100);
+        return `rgb(${r},${g},${b})`;
     }
 
     function closeAllWindows() {
