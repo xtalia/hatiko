@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Price Calculator
 // @namespace    https://github.com/xtalia/vscode/blob/main/memchat/js/price_calculator.js
-// @version      1.6.0
+// @version      1.7.0
 // @description  Добавляет окошко для расчета цен с возможностью сворачивания и вывода результатов в текстовое поле, а также с функцией для расчета скидки
 // @author       Serg
 // @match        https://online.moysklad.ru/*
@@ -54,16 +54,27 @@
         content.style.display = 'block';
 
         const cashInput = createInputElement('number', 'Введите сумму');
-        content.appendChild(cashInput);
+        cashInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                calculate(); // Запускает расчёт по нажатию Enter
+            }
+        });
+content.appendChild(cashInput);
 
         const modeSelect = createSelectElement([
             { value: 'all', text: 'Для всех' },
-            { value: 'balakovo', text: 'Для Балаково' }
+            { value: 'balakovo', text: 'Для Балаково' },
+            { value: 'prepay', text: 'Предоплата 5%' }
         ]);
         content.appendChild(modeSelect);
 
         const calculateButton = createButtonElement('Посчитать', () => calculate());
         content.appendChild(calculateButton);
+
+        const reverseButton = createButtonElement('Реверс', () => reverseCalculate());
+        reverseButton.style.backgroundColor = '#f44336'; // Красная кнопка
+        reverseButton.style.marginBottom = '5px'; // Пример уменьшенного размера
+        content.appendChild(reverseButton);
 
         const resultField = createTextAreaElement('', 80);
         content.appendChild(resultField);
@@ -74,9 +85,46 @@
         const applyDiscountButton = createButtonElement('Применить скидку', () => applyDiscount());
         content.appendChild(applyDiscountButton);
 
+        function reverseCalculate() {
+            const reverseAmount = parseFloat(cashInput.value);
+            const mode = modeSelect.value;
+            const rates = rateConfigurations[mode];
+
+            if (isNaN(reverseAmount)) {
+                resultField.value = 'Ошибка: Введите корректную сумму для реверса.';
+                return;
+            }
+
+            // Восстанавливаем исходные суммы
+            const originalQrPrice = Math.round(reverseAmount / rates.qr);
+            const originalCardPrice = Math.round(reverseAmount / rates.card);
+            const originalRassrochkaSix = Math.round(reverseAmount / rates.six);
+            const originalRassrochkaTen = Math.round(reverseAmount / rates.ten);
+            const originalCreditPrice = Math.round(reverseAmount / rates.credit);
+
+    // Формируем результат с заголовком "РЕВЕРС"
+    resultField.value = `
+🔄 РЕВЕРС расчета:
+🔹 Изначальная сумма по QR: ${originalQrPrice} рублей
+🔹 Изначальная сумма по карте: ${originalCardPrice} рублей
+🔹 Изначальная сумма в рассрочку (6 мес): ${originalRassrochkaSix} рублей
+🔹 Изначальная сумма в рассрочку (10 мес): ${originalRassrochkaTen} рублей
+🔹 Изначальная сумма в кредит: ${originalCreditPrice} рублей
+`.trim();
+}
+
+
         function calculate() {
             const cash = parseFloat(cashInput.value);
             const mode = modeSelect.value;
+
+            if (mode === 'prepay') {
+                const prepayPercentage = 0.05;
+                const prepayAmount = Math.ceil(cash * prepayPercentage / 500) * 500; // Округление до 500
+                resultField.value = `Предоплата 5%: ${prepayAmount} рублей\n`;
+                return;
+            }
+
             const rates = rateConfigurations[mode];
             const credit_month = 36;
 
