@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат
 // @namespace    http://tampermonkey.net/
-// @version      1.7.611
+// @version      1.7.612
 // @description  Набор скриптов
 // @match        https://online.moysklad.ru/*
 // @grant        GM_xmlhttpRequest
@@ -11,8 +11,9 @@
 
 (function() {
     'use strict';
+    window.addEventListener('load', function() {
+        console.log('Main userscript loaded');
 
-    console.log('Main userscript loaded');
     const superserver = 'memchat.tw1.ru:5000';
 
     GM_addStyle(`
@@ -418,4 +419,5 @@ function checkHatiko() {
 
     // Call the initialize function to set up the script
     initialize();
+    });
 })();
