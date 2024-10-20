@@ -33,7 +33,7 @@
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; cursor: pointer;';
 
         const title = document.createElement('span');
-        title.textContent = '🧮 Калькулятор 1.6.0';
+        title.textContent = '🧮 Калькулятор 1.7.0';
         title.style.fontWeight = 'bold';
         title.style.fontSize = '14px';
         header.appendChild(title);
