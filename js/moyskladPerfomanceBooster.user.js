@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         MoySklad Performance Booster
 // @namespace    http://tampermonkey.net/
-// @version      0.2
-// @description  Ускорение работы сайта online.moysklad.ru с минификацией и асинхронной загрузкой скриптов
+// @version      0.1
+// @description  Ускорение работы сайта online.moysklad.ru
 // @author       Ваше имя
 // @match        https://online.moysklad.ru/*
 // @grant        none
@@ -87,44 +87,22 @@
         };
     }
 
-    // Извлечение и асинхронная загрузка динамических скриптов с кэшированием
-    function asyncDynamicScripts() {
-        const scripts = document.querySelectorAll('script[src]');
-        scripts.forEach(script => {
-            const src = script.src;
-            if (!localStorage.getItem(src)) {
-                // Сохраняем исходный скрипт в localStorage
-                fetch(src).then(response => response.text()).then(code => {
-                    localStorage.setItem(src, code);
-                });
-            } else {
-                // Заменяем старый скрипт на асинхронный, загружаемый из localStorage
-                const cachedScript = localStorage.getItem(src);
-                const asyncScript = document.createElement('script');
-                asyncScript.type = 'text/javascript';
-                asyncScript.async = true;
-                asyncScript.text = cachedScript;
-                document.body.appendChild(asyncScript);
-                script.remove();
-            }
+    // Кэширование API запросов
+    function cacheApiResponse(url) {
+        const cachedData = localStorage.getItem(url);
+        if (cachedData) {
+            return Promise.resolve(JSON.parse(cachedData));
+        }
+        return fetch(url).then(response => response.json()).then(data => {
+            localStorage.setItem(url, JSON.stringify(data));
+            return data;
         });
-    }
-
-    // Минификация HTML: удаление лишних пробелов, табуляций и комментариев
-    function minifyHTML() {
-        const body = document.body.innerHTML;
-        const minified = body
-            .replace(/\s+/g, ' ') // Убираем все лишние пробелы и табуляции
-            .replace(/<!--[\s\S]*?-->/g, ''); // Удаляем комментарии
-        document.body.innerHTML = minified;
     }
 
     // Основные функции
     function main() {
         lazyLoadMedia();
         optimizeTimers();
-        asyncDynamicScripts(); // Асинхронная загрузка динамических скриптов
-        minifyHTML(); // Минификация HTML
     }
 
     // Запуск скрипта
