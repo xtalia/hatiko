@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Global Iframe Opener
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Открывать текущую страницу в iframe
 // @author       You
 // @match        *://*/*
@@ -74,19 +74,22 @@
         `;
         header.textContent = 'Iframe Мини';
 
-        let closeButton = createButton('✖', () => closeWindow(modalWindow));
+        let closeButton = createButton('❎', () => closeWindow(modalWindow));
         closeButton.style.cssText = 'position: absolute; right: 5px; top: 5px;';
 
-        let collapseButton = createButton('▲', () => collapseWindow(modalWindow));
+        let collapseButton = createButton('🔽', () => collapseWindow(modalWindow));
         collapseButton.style.cssText = 'position: absolute; right: 35px; top: 5px;';
 
-        let copyButton = createButton('⧉', () => copyIframeURL(iframe));
+        let copyButton = createButton('📋', () => copyIframeURL(iframe));
         copyButton.style.cssText = 'position: absolute; right: 65px; top: 5px;';
+
+        let hideHeaderButton = createButton('👁️', () => hideHeader(header));
 
         let urlField = createURLField();
         header.appendChild(closeButton);
         header.appendChild(collapseButton);
         header.appendChild(copyButton);
+        header.appendChild(hideHeaderButton);
         header.appendChild(urlField);
         header.addEventListener('mousedown', moveHandler.bind(null, modalWindow));
 
@@ -198,4 +201,13 @@
         openWindows.forEach(w => w.remove());
         openWindows = [];
     }
+
+    function hideHeader(header) {
+         // Прячем заголовок
+    header.style.display = 'none';
+    setTimeout(() => {
+         // Восстанавливаем через 5 секунд
+        header.style.display = 'block';
+    }, 5000);
+}
 })();
