@@ -4,6 +4,7 @@
 // @version      1.0
 // @description  Открывать текущую страницу в iframe
 // @author       You
+// @match        *://*/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
 // ==/UserScript==
