@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Global Iframe Opener
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Открывать текущую страницу в iframe
 // @author       You
 // @match        *://*/*
