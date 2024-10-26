@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Price Calculator
 // @namespace    https://github.com/xtalia/vscode/blob/main/memchat/js/price_calculator.js
-// @version      1.7.1
+// @version      1.7.4
 // @description  Добавляет окошко для расчета цен с возможностью сворачивания и вывода результатов в текстовое поле, а также с функцией для расчета скидки
 // @author       Serg
 // @match        https://online.moysklad.ru/*
@@ -19,8 +19,16 @@
     // Константы для расчетов
     const rateConfigurations = {
         all: { qr: 1.041, card: 1.051, six: 1.101, ten: 1.131, credit: 1.201 },
-        balakovo: { qr: 1.0151, card: 1.031, six: 1.071, ten: 1.101, credit: 1.181 }
-    };
+        balakovo: {
+        qr: 1.0151,
+        card: 1.031,
+        six: 1.071,
+        ten: 1.111,
+        twelve: 1.121,
+        eighteen: 1.171,
+        twentyfour: 1.201
+    }
+};
 
     let calculatorVisible = true;
     let container;
@@ -33,7 +41,7 @@
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; cursor: pointer;';
 
         const title = document.createElement('span');
-        title.textContent = '🧮 Калькулятор 1.7';
+        title.textContent = '🧮 Калькулятор 1.7.4';
         title.style.fontWeight = 'bold';
         title.style.fontSize = '14px';
         header.appendChild(title);
@@ -85,74 +93,88 @@ content.appendChild(cashInput);
         const applyDiscountButton = createButtonElement('Применить скидку', () => applyDiscount());
         content.appendChild(applyDiscountButton);
 
-        function reverseCalculate() {
-            const reverseAmount = parseFloat(cashInput.value);
-            const mode = modeSelect.value;
-            const rates = rateConfigurations[mode];
+function reverseCalculate() {
+    const reverseAmount = parseFloat(cashInput.value);
+    const mode = modeSelect.value;
+    const rates = rateConfigurations[mode];
 
-            if (isNaN(reverseAmount)) {
-                resultField.value = 'Ошибка: Введите корректную сумму для реверса.';
-                return;
-            }
+    // Восстанавливаем исходные суммы для режима Балаково
+    const originalQrPrice = Math.round(reverseAmount / rates.qr);
+    const originalCardPrice = Math.round(reverseAmount / rates.card);
 
-            // Восстанавливаем исходные суммы
-            const originalQrPrice = Math.round(reverseAmount / rates.qr);
-            const originalCardPrice = Math.round(reverseAmount / rates.card);
-            const originalRassrochkaSix = Math.round(reverseAmount / rates.six);
-            const originalRassrochkaTen = Math.round(reverseAmount / rates.ten);
-            const originalCreditPrice = Math.round(reverseAmount / rates.credit);
+    // Рассчитываем реверс для рассрочки на 6, 10, 12, 18 и 24 месяца с новыми процентами
+    const originalRassrochkaSix = Math.round(reverseAmount / rates.six);
+    const originalRassrochkaTen = Math.round(reverseAmount / rates.ten);
+    const originalRassrochkaTwelve = Math.round(reverseAmount / rates.twelve || reverseAmount);
+    const originalRassrochkaEighteen = Math.round(reverseAmount / rates.eighteen || reverseAmount);
+    const originalRassrochkaTwentyFour = Math.round(reverseAmount / rates.twentyfour || reverseAmount);
+    const originalCreditPrice = Math.round(reverseAmount / rates.credit);
 
     // Формируем результат с заголовком "РЕВЕРС"
     resultField.value = `
 🔄 РЕВЕРС расчета:
-🔹 Изначальная сумма по QR: ${originalQrPrice} рублей
-🔹 Изначальная сумма по карте: ${originalCardPrice} рублей
-🔹 Изначальная сумма в рассрочку (6 мес): ${originalRassrochkaSix} рублей
-🔹 Изначальная сумма в рассрочку (10 мес): ${originalRassrochkaTen} рублей
-🔹 Изначальная сумма в кредит: ${originalCreditPrice} рублей
+🔹 QR: ${originalQrPrice} руб.
+🔹 Карта: ${originalCardPrice} руб.
+🔹 Рассрочка 6 мес: ${originalRassrochkaSix} руб.
+🔹 Рассрочка 10 мес: ${originalRassrochkaTen} руб.
+🔹 Рассрочка 12 мес: ${originalRassrochkaTwelve} руб.
+🔹 Рассрочка 18 мес: ${originalRassrochkaEighteen} руб.
+🔹 Рассрочка 24 мес: ${originalRassrochkaTwentyFour} руб.
+🔹 Кредит: ${originalCreditPrice} руб.
 `.trim();
 }
 
 
-        function calculate() {
-            const cash = parseFloat(cashInput.value);
-            const mode = modeSelect.value;
+function calculate() {
 
-            if (mode === 'prepay') {
-                const prepayPercentage = 0.05;
-                const prepayAmount = Math.ceil(cash * prepayPercentage / 500) * 500; // Округление до 500
-                resultField.value = `Предоплата 5%: ${prepayAmount} рублей\n`;
-                return;
-            }
+    const cash = parseFloat(cashInput.value);
+    const mode = modeSelect.value;
 
-            const rates = rateConfigurations[mode];
-            const credit_month = 36;
+    // Проверка на корректность ввода
+    if (isNaN(cash) || cash <= 0) {
+        resultField.value = 'Ошибка: Введите корректную сумму.';
+        return;
+    }
+    if (mode === 'prepay') {
+        const prepayPercentage = 0.05;
+        const prepayAmount = Math.ceil(cash * prepayPercentage / 500) * 500; // Округление до 500
+        resultField.value = `Предоплата 5%: ${prepayAmount} рублей\n`;
+        return;
+    }
 
-            const qr_price = Math.round(cash * rates.qr / 100) * 100 - 10;
-            const card_price = Math.round(cash * rates.card / 100) * 100 - 10;
-            const rassrochka_price_six = Math.round(cash * rates.six / 100) * 100 - 10;
-            const rassrochka_price_ten = Math.round(cash * rates.ten / 100) * 100 - 10;
-            const credit_price = Math.round(cash * rates.credit / 100) * 100 - 10;
-            const cashback_amount = Math.round(cash * 0.01);
+    const rates = rateConfigurations[mode];
+    const credit_month = 36;
 
-            const twenty = Math.round(credit_price * ((20 / 12 / 100) * (1 + (20 / 12 / 100)) ** credit_month) / (((1 + (20 / 12 / 100)) ** credit_month) - 1));
-            const forty = Math.round(credit_price * ((40 / 12 / 100) * (1 + (40 / 12 / 100)) ** credit_month) / (((1 + (40 / 12 / 100)) ** credit_month) - 1));
+    const qr_price = Math.round(cash * rates.qr / 100) * 100 - 10;
+    const card_price = Math.round(cash * rates.card / 100) * 100 - 10;
+    const rassrochka_price_six = Math.round(cash * rates.six / 100) * 100 - 10;
+    const rassrochka_price_ten = Math.round(cash * rates.ten / 100) * 100 - 10;
+    const rassrochka_price_twelve = Math.round(cash * rates.twelve / 100) * 100 - 10;
+    const rassrochka_price_eighteen = Math.round(cash * rates.eighteen / 100) * 100 - 10;
+    const rassrochka_price_twentyfour = Math.round(cash * rates.twentyfour / 100) * 100 - 10;
+    const credit_price = Math.round(cash * rates.credit / 100) * 100 - 10;
+    const cashback_amount = Math.round(cash * 0.01);
 
-            resultField.value = `
-💵 Стоимость: ${cash} рублей с учетом скидки за оплату наличными
-📷 QR = ${qr_price} рублей
-💳 по карте = ${card_price} рублей
+    const twenty = Math.round(credit_price * ((20 / 12 / 100) * (1 + (20 / 12 / 100)) ** credit_month) / (((1 + (20 / 12 / 100)) ** credit_month) - 1));
+    const forty = Math.round(credit_price * ((40 / 12 / 100) * (1 + (40 / 12 / 100)) ** credit_month) / (((1 + (40 / 12 / 100)) ** credit_month) - 1));
 
-️🏦 в рассрочку
-️🔹 ОТП = ${rassrochka_price_six} рублей (от ${Math.round(rassrochka_price_six / 6)} руб. на 6 месяцев)
-🔹 Другие банки = ${rassrochka_price_ten} рублей (от ${Math.round(rassrochka_price_ten / 10)} руб. на 10 месяцев)
+    resultField.value = `
+💵 Наличными: ${cash} руб.
+📷 QR: ${qr_price} руб.
+💳 Картой: ${card_price} руб.
 
-🏛 в кредит = ${credit_price} + процент Банка
-от ${twenty} - ${forty} руб. сроком до ${credit_month} месяцев
-** %Банка ~ от 20 до 40% годовых (точные условия может предоставить только менеджер)
-💸 Кешбек = ${cashback_amount} внутренними баллами
+🏦 Рассрочка
+🔹 6 мес.: ${rassrochka_price_six} руб. (от ${Math.round(rassrochka_price_six / 6)} руб./мес)
+🔹 10 мес.: ${rassrochka_price_ten} руб. (от ${Math.round(rassrochka_price_ten / 10)} руб./мес)
+🔹 12 мес.: ${rassrochka_price_twelve} руб. (от ${Math.round(rassrochka_price_twelve / 12)} руб./мес)
+🔹 18 мес.: ${rassrochka_price_eighteen} руб. (от ${Math.round(rassrochka_price_eighteen / 18)} руб./мес)
+🔹 24 мес.: ${rassrochka_price_twentyfour} руб. (от ${Math.round(rassrochka_price_twentyfour / 24)} руб./мес)
+
+🏛 Кредит: ${credit_price} руб. + % банка (от 20% до 40% годовых, условия уточнит менеджер)
+💸 Кэшбэк: ${cashback_amount} баллами
 `.trim();
-        }
+}
+
 
         function applyDiscount() {
             const originalPrice = parseFloat(cashInput.value);
@@ -160,7 +182,7 @@ content.appendChild(cashInput);
             
             if (!isNaN(discount)) {
                 const discountedPrice = originalPrice - discount;
-                const discountPercentage = 100 - (discountedPrice / (originalPrice * 0.01));
+                const discountPercentage = (discount / originalPrice) * 100;
 
                 resultField.value = `
 🎉 Применена скидка:
