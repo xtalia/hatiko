@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Price Calculator
 // @namespace    https://github.com/xtalia/vscode/blob/main/memchat/js/price_calculator.js
-// @version      1.7.4
+// @version      1.7.5
 // @description  Добавляет окошко для расчета цен с возможностью сворачивания и вывода результатов в текстовое поле, а также с функцией для расчета скидки
 // @author       Serg
 // @match        https://online.moysklad.ru/*
@@ -18,15 +18,25 @@
 
     // Константы для расчетов
     const rateConfigurations = {
-        all: { qr: 1.041, card: 1.051, six: 1.101, ten: 1.131, credit: 1.201 },
+        all: {
+            qr: 1.041,
+            card: 1.051,
+            six: 1.091,
+            ten: 1.131,
+            twelve: 1.141,
+            eighteen: 1.191,
+            twentyfour: 1.221,
+            thirtysix: 1.291},
+
         balakovo: {
-        qr: 1.0151,
-        card: 1.031,
-        six: 1.071,
-        ten: 1.111,
-        twelve: 1.121,
-        eighteen: 1.171,
-        twentyfour: 1.201
+            qr: 1.0151,
+            card: 1.031,
+            six: 1.071,
+            ten: 1.111,
+            twelve: 1.121,
+            eighteen: 1.171,
+            twentyfour: 1.201,
+            thirtysix: 1.271
     }
 };
 
@@ -41,7 +51,7 @@
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; cursor: pointer;';
 
         const title = document.createElement('span');
-        title.textContent = '🧮 Калькулятор 1.7.4';
+        title.textContent = '🧮 Калькулятор 1.7.5';
         title.style.fontWeight = 'bold';
         title.style.fontSize = '14px';
         header.appendChild(title);
@@ -108,7 +118,8 @@ function reverseCalculate() {
     const originalRassrochkaTwelve = Math.round(reverseAmount / rates.twelve || reverseAmount);
     const originalRassrochkaEighteen = Math.round(reverseAmount / rates.eighteen || reverseAmount);
     const originalRassrochkaTwentyFour = Math.round(reverseAmount / rates.twentyfour || reverseAmount);
-    const originalCreditPrice = Math.round(reverseAmount / rates.credit);
+    const originalRassrochkaThirtySix = Math.round(reverseAmount / rates.thirtysix || reverseAmount);
+    // const originalCreditPrice = Math.round(reverseAmount / rates.credit);
 
     // Формируем результат с заголовком "РЕВЕРС"
     resultField.value = `
@@ -120,8 +131,10 @@ function reverseCalculate() {
 🔹 Рассрочка 12 мес: ${originalRassrochkaTwelve} руб.
 🔹 Рассрочка 18 мес: ${originalRassrochkaEighteen} руб.
 🔹 Рассрочка 24 мес: ${originalRassrochkaTwentyFour} руб.
-🔹 Кредит: ${originalCreditPrice} руб.
+🔹 Рассрочка 36 мес: ${originalRassrochkaThirtySix} руб.
+
 `.trim();
+    //🔹 Кредит: ${originalCreditPrice} руб.
 }
 
 
@@ -152,11 +165,12 @@ function calculate() {
     const rassrochka_price_twelve = Math.round(cash * rates.twelve / 100) * 100 - 10;
     const rassrochka_price_eighteen = Math.round(cash * rates.eighteen / 100) * 100 - 10;
     const rassrochka_price_twentyfour = Math.round(cash * rates.twentyfour / 100) * 100 - 10;
-    const credit_price = Math.round(cash * rates.credit / 100) * 100 - 10;
+    const rassrochka_price_thirtysix = Math.round(cash * rates.thirtysix / 100) * 100 - 10;
+    // const credit_price = Math.round(cash * rates.credit / 100) * 100 - 10;
     const cashback_amount = Math.round(cash * 0.01);
 
-    const twenty = Math.round(credit_price * ((20 / 12 / 100) * (1 + (20 / 12 / 100)) ** credit_month) / (((1 + (20 / 12 / 100)) ** credit_month) - 1));
-    const forty = Math.round(credit_price * ((40 / 12 / 100) * (1 + (40 / 12 / 100)) ** credit_month) / (((1 + (40 / 12 / 100)) ** credit_month) - 1));
+    // const twenty = Math.round(credit_price * ((20 / 12 / 100) * (1 + (20 / 12 / 100)) ** credit_month) / (((1 + (20 / 12 / 100)) ** credit_month) - 1));
+    // const forty = Math.round(credit_price * ((40 / 12 / 100) * (1 + (40 / 12 / 100)) ** credit_month) / (((1 + (40 / 12 / 100)) ** credit_month) - 1));
 
     resultField.value = `
 💵 Наличными: ${cash} руб.
@@ -169,10 +183,11 @@ function calculate() {
 🔹 12 мес.: ${rassrochka_price_twelve} руб. (от ${Math.round(rassrochka_price_twelve / 12)} руб./мес)
 🔹 18 мес.: ${rassrochka_price_eighteen} руб. (от ${Math.round(rassrochka_price_eighteen / 18)} руб./мес)
 🔹 24 мес.: ${rassrochka_price_twentyfour} руб. (от ${Math.round(rassrochka_price_twentyfour / 24)} руб./мес)
+🔹 36 мес.: ${rassrochka_price_thirtysix} руб. (от ${Math.round(rassrochka_price_thirtysix / 36)} руб./мес)
 
-🏛 Кредит: ${credit_price} руб. + % банка (от 20% до 40% годовых, условия уточнит менеджер)
 💸 Кэшбэк: ${cashback_amount} баллами
 `.trim();
+    //🏛 Кредит: ${credit_price} руб. + % банка (от 20% до 40% годовых, условия уточнит менеджер)
 }
 
 
