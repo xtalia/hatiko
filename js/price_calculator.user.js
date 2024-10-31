@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Price Calculator
 // @namespace    https://github.com/xtalia/vscode/blob/main/memchat/js/price_calculator.js
-// @version      1.7.61
+// @version      1.7.62
 // @description  Добавляет окошко для расчета цен с возможностью сворачивания и вывода результатов в текстовое поле, а также с функцией для расчета скидки
 // @author       Serg
 // @match        https://online.moysklad.ru/*
@@ -21,22 +21,22 @@
         all: {
             qr: 1.041,
             card: 1.051,
-            six: 1.091,
-            ten: 1.131,
-            twelve: 1.141,
-            eighteen: 1.191,
-            twentyfour: 1.221,
-            thirtysix: 1.291},
+            six: 1.081,
+            ten: 1.121,
+            twelve: 1.1351,
+            eighteen: 1.1851,
+            twentyfour: 1.241,
+            thirtysix: 1.321},
 
         balakovo: {
             qr: 1.0151,
             card: 1.031,
-            six: 1.071,
-            ten: 1.111,
-            twelve: 1.121,
-            eighteen: 1.171,
-            twentyfour: 1.201,
-            thirtysix: 1.271
+            six: 1.081,
+            ten: 1.121,
+            twelve: 1.1351,
+            eighteen: 1.1851,
+            twentyfour: 1.241,
+            thirtysix: 1.321
     }
 };
 
