@@ -24,7 +24,8 @@ except:
     config_data = ""
 
 
-GRANTED = ['184944023', '348971882', '587612412', '529194639', '540312' ,'6212781520','6672281848']
+GRANTED = config_data['granted']
+RATES = config_data['calc_rates']['all']
 
 UPDATE_TRIGGERS = ["обновить", "update", "j,yjdbnm", "помощь"]
 
@@ -130,3 +131,9 @@ questions = {
     'PDA': 'Введите адрес проживания:',
     'WhoBuy': 'Менеджер, который принимает (Фамилия Инициалы):'
 }
+
+if __name__ == "__main__":
+    for rate, value in RATES.items():
+        print(f"{rate}: {value}")
+    print(GRANTED)
+    print(RATES)

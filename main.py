@@ -25,7 +25,7 @@ if config.cred_json != "":
 
 directory = os.path.dirname(os.path.abspath(__file__))
 files = os.listdir(directory)
-python_files = [file for file in files if file.endswith(('.py', '.docx', '.xml'))]
+python_files = [file for file in files if file.endswith(('.py', '.docx', '.xml', '.json'))]
 
 cred_json = config.cred_json
 config_data = config.config_data

@@ -1,53 +1,41 @@
-def cash_amount(cash=0, credit_month=37, output=""):
+from config import RATES
+def cash_amount(cash=0, credit_month=36, output=""):
     try:
+        # Используем RATES для расчета стоимости с различными способами оплаты
+        qr_price = round(cash * RATES['qr'] / 100) * 100 - 10
+        card_price = round(cash * RATES['card'] / 100) * 100 - 10
+        rassrochka_price_six = round(cash * RATES['six'] / 100) * 100 - 10
+        rassrochka_price_ten = round(cash * RATES['ten'] / 100) * 100 - 10
+        rassrochka_price_twelve = round(cash * RATES['twelve'] / 100) * 100 - 10
+        rassrochka_price_eighteen = round(cash * RATES['eighteen'] / 100) * 100 - 10
+        rassrochka_price_twentyfour = round(cash * RATES['twentyfour'] / 100) * 100 - 10
+        rassrochka_price_thirtysix = round(cash * RATES['thirtysix'] / 100) * 100 - 10
         
-        # база
-        qr_price = round(cash * 1.0401, -2) -10
-        card_price = round(cash * 1.0501, -2) -10
-        rassrochka_price_six = round(cash * 1.1001, -2) -10
-        rassrochka_price_ten = round(cash * 1.1301, -2) -10
-        
-        credit_price = round(cash * 1.2001, -2) -10
         cashback_amount = round(cash * 0.01)
-        
-        
-        if credit_month==37:
-            credit_month = 36
-            qr_price = round(cash * 1.01501, -2) -10
-            card_price = round(cash * 1.0301, -2) -10
-            rassrochka_price_six = round(cash * 1.0701, -2) -10
-            rassrochka_price_ten = round(cash * 1.1001, -2) -10
-            credit_price = round(cash * 1.1801, -2) -10
-            cashback_amount = round(cash * 0.01)
-            output += "ТОЛЬКО ДЛЯ БАЛАКОВО!!! ДЛЯ ДРУГИХЪ ГОРОДОВ - на САЙТЕ http://1721671-cu28683.twc1.net/ \n\n"
-         
-        twenty = round(credit_price * ((20/12/100) * (1 + (20/12/100)) ** credit_month) / ((1 + (20/12/100)) ** credit_month - 1), 0)
-        fourty = round(credit_price * ((40/12/100) * (1 + (40/12/100)) ** credit_month) / ((1 + (40/12/100)) ** credit_month - 1), 0)
+        prepay_amount = round(cash * 0.05 / 500) * 500
 
+        # Формирование вывода
         output += f"""
-💵 Стоимость: {cash:.0f} рублей с учетом скидки за оплату наличными
+💵 Наличными: {cash:.0f} руб.
+📷 QR: {qr_price:.0f} руб.
+💳 Картой: {card_price:.0f} руб.
 
-📷 QR = {qr_price:.0f} рублей
-💳 по карте = {card_price:.0f} рублей
+🏦 Рассрочка
+🔹 6 мес.: {rassrochka_price_six:.0f} руб. (от {round(rassrochka_price_six / 6):.0f} руб./мес)
+🔹 10 мес.: {rassrochka_price_ten:.0f} руб. (от {round(rassrochka_price_ten / 10):.0f} руб./мес)
+🔹 12 мес.: {rassrochka_price_twelve:.0f} руб. (от {round(rassrochka_price_twelve / 12):.0f} руб./мес)
+🔹 18 мес.: {rassrochka_price_eighteen:.0f} руб. (от {round(rassrochka_price_eighteen / 18):.0f} руб./мес)
+🔹 24 мес.: {rassrochka_price_twentyfour:.0f} руб. (от {round(rassrochka_price_twentyfour / 24):.0f} руб./мес)
+🔹 36 мес.: {rassrochka_price_thirtysix:.0f} руб. (от {round(rassrochka_price_thirtysix / 36):.0f} руб./мес)
 
-️🏦 в рассрочку
-️🔹 ОТП = {rassrochka_price_six:.0f} рублей (от {rassrochka_price_six/6:.0f} руб. на 6 месяцев)
-🔹 Другие банки = {rassrochka_price_ten:.0f} рублей (от {rassrochka_price_ten/10:.0f} руб. на 10 месяцев)
+💸 Кэшбэк: {cashback_amount:.0f} баллами
+💸 5% предоплата: {prepay_amount:.0f} рублей
+""".strip()
 
-🏛 в кредит = {credit_price:.0f} рублей + % Банка
-(от {twenty:.0f} - {fourty:.0f} руб. сроком до {credit_month:.0f} месяцев)
-** %Банка ~ от 20 до 40% годовых (точные условия может предоставить только менеджер)
-
-💸 Кешбек = {cashback_amount:.0f} внутренними рублями
-(через 2 недели, если закажете самостоятельно на сайте)
-"""
-
-        # Вывод пользователю
         return output
-        # send_debug_message("Калькулятор ОК")
     except ValueError:
         return "Сломался калькулятор, что-то пошло не так (Только цифры)"
-        # send_debug_message("Калькулятор Ошибка")
+
 
 def process_discount(original,discount):
         try:
@@ -66,3 +54,4 @@ def process_discount(original,discount):
             return result_message
         except:
             return "Сломался калькулятор, что-то пошло не так (Только цифры)"
+        
