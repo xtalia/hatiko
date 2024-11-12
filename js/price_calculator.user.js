@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Price Calculator
 // @namespace    https://github.com/xtalia/vscode/blob/main/memchat/js/price_calculator.js
-// @version      1.7.62
+// @version      1.7.8
 // @description  Добавляет окошко для расчета цен с возможностью сворачивания и вывода результатов в текстовое поле, а также с функцией для расчета скидки
 // @author       Serg
 // @match        https://online.moysklad.ru/*
+// @match        https://*.bitrix24.ru/*
 // @grant        GM_registerMenuCommand
 // ==/UserScript==
 
@@ -16,33 +17,75 @@
         return; // Прекратить выполнение скрипта, если он запущен в iframe
     }
 
-    // Константы для расчетов
-    const rateConfigurations = {
-        all: {
-            qr: 1.041,
-            card: 1.051,
-            six: 1.081,
-            ten: 1.121,
-            twelve: 1.1351,
-            eighteen: 1.1851,
-            twentyfour: 1.241,
-            thirtysix: 1.321},
+        /*
 
-        balakovo: {
-            qr: 1.0151,
-            card: 1.031,
-            six: 1.081,
-            ten: 1.121,
-            twelve: 1.1351,
-            eighteen: 1.1851,
-            twentyfour: 1.241,
-            thirtysix: 1.321
-    }
-};
+    Переменные
+
+    */
+
+
+    // Константы для расчетов
+    const UPDATE_INTERVAL = 12 * 60 * 60 * 1000; // 12 часов
+    let rateConfigurations = {};
+    let previousRateConfigurations = {};
+    const jsonUrl = "https://raw.githubusercontent.com/xtalia/hatiko/refs/heads/main/js/calculatorRates.json";
+
+
 
     let calculatorVisible = true;
     let container;
 
+
+
+
+    /*
+
+    ФУНКЦИИ
+
+    */
+
+        // Функция загрузки данных из JSON
+async function loadRateConfigurations() {
+    try {
+        const response = await fetch(jsonUrl);
+        if (!response.ok) {
+            throw new Error(`Ошибка загрузки JSON: ${response.status}`);
+        }
+        rateConfigurations = await response.json();
+        console.log("Данные rateConfigurations загружены:", rateConfigurations);
+
+        // Сохранить загруженные данные в локальное хранилище
+        saveToLocalStorage(rateConfigurations);
+    } catch (error) {
+        console.error("Не удалось загрузить данные для rateConfigurations:", error);
+
+        // Попытка загрузки из локального хранилища
+        const savedData = loadFromLocalStorage();
+        if (savedData) {
+            rateConfigurations = savedData;
+            console.log("Используются данные из локального хранилища:", rateConfigurations);
+        } else {
+            console.error("Данные недоступны в локальном хранилище.");
+        }
+    }
+}
+
+
+    async function forceUpdateRateConfigurations() {
+    await loadRateConfigurations();
+    alert("Данные обновлены вручную.");
+}
+
+    // Функция для сохранения данных в локальное хранилище
+function saveToLocalStorage(data) {
+    localStorage.setItem("rateConfigurations", JSON.stringify(data));
+}
+
+// Функция для загрузки данных из локального хранилища
+function loadFromLocalStorage() {
+    const savedData = localStorage.getItem("rateConfigurations");
+    return savedData ? JSON.parse(savedData) : null;
+}
     function createCalculator() {
         container = document.createElement('div');
         container.style.cssText = 'position: fixed; bottom: 10px; right: 10px; width: 250px; background: linear-gradient(to bottom right, #f0f0f0, #e0e0e0); border: 1px solid #ccc; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 15px; z-index: 1000;';
@@ -268,10 +311,25 @@ function calculate() {
 
     function addMenuCommand() {
         GM_registerMenuCommand("Toggle Price Calculator", toggleCalculator);
+        GM_registerMenuCommand("Обновить данные вручную", forceUpdateRateConfigurations);
     }
 
-    window.addEventListener('load', () => {
-        createCalculator();
-        addMenuCommand();
-    });
+window.addEventListener('load', () => {
+    // Загружаем данные из локального хранилища, если они есть
+    const savedData = loadFromLocalStorage();
+    if (savedData) {
+        rateConfigurations = savedData;
+        console.log("Данные rateConfigurations загружены из локального хранилища при запуске:", rateConfigurations);
+    } else {
+        // Иначе загружаем с сервера
+        loadRateConfigurations();
+    }
+
+    // Создаем калькулятор и добавляем команду меню
+    createCalculator();
+    addMenuCommand();
+
+    // Обновляем данные из JSON каждые 12 часов
+    setInterval(loadRateConfigurations, UPDATE_INTERVAL);
+});
 })();
