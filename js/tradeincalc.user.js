@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Trade-In Calculator
 // @namespace    http://tampermonkey.net/
-// @version      1.11
+// @version      1.12
 // @description  Calculate trade-in value for devices
-// @match        *://*/*
+// @match        https://online.moysklad.ru/*
+// @match        https://*.bitrix24.ru/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
