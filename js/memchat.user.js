@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Мемный чат
 // @namespace    http://tampermonkey.net/
-// @version      1.7.612
+// @version      1.7.7
 // @description  Набор скриптов
 // @match        https://online.moysklad.ru/*
+// @match        https://*.bitrix24.ru/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
