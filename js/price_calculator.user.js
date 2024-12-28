@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         Price Calculator
 // @namespace    https://github.com/xtalia/vscode/blob/main/memchat/js/price_calculator.js
-// @version      1.7.8
+// @version      1.7.81
 // @description  Добавляет окошко для расчета цен с возможностью сворачивания и вывода результатов в текстовое поле, а также с функцией для расчета скидки
 // @author       Serg
 // @match        https://online.moysklad.ru/*
-// @match        https://*.bitrix24.ru/*
 // @grant        GM_registerMenuCommand
 // ==/UserScript==
 
