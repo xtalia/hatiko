@@ -18,6 +18,14 @@ DB = creds["db"]["db"]
 cache_file = 'cache.json'
 last_updated = 0
 cache_duration = 31 * 60  # 30 minutes
+cities = {
+    '🆂': ('price_saratov', 'recommended_saratov'),
+    '🆅': ('price_voronezh', 'recommended_voronezh'),
+    '🅻': ('price_lipetsk', 'recommended_lipetsk'),
+    '🅱️': ('price_balakovo', 'recommended_balakovo')
+}
+
+
 
 def get_db_connection():
     return psycopg2.connect(
@@ -34,7 +42,8 @@ def load_cache():
             data = json.load(f)
             cache = data['cache']
             last_updated = data['last_updated']
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Error loading cache: {e}")
         cache = None
         last_updated = 0
 
@@ -110,9 +119,19 @@ def search_cache(query):
         return cache.get(str(query))
     return []
 
-
+def check_price_condition(price, recommended):
+    if price is None or recommended is None:
+        return 'Нет данных'
+    return '😀 проходим' if price >= recommended else '😢 не проходим'
 
 def format_response(item):
+    
+ 
+    prices_info = "\n".join(
+    f"💰 {key}: {item[price]} {check_price_condition(item[price], item[recommended])}"
+    for key, (price, recommended) in cities.items()
+    )
+    
     if not item:
         return "No data found"
 
@@ -120,15 +139,12 @@ def format_response(item):
 🆔 {item['article']}
 🔢 {item['external_code']}
 🏷️ {item['name']}
-💰 🆂: {item['price_saratov']} {'😀 проходим' if item['price_saratov'] >= item['recommended_saratov'] else '😢 не проходим'} 
-💰 🆅: {item['price_voronezh']} {'😀 проходим' if item['price_voronezh'] >= item['recommended_voronezh'] else '😢 не проходим'} 
-💰 🅻: {item['price_lipetsk']} {'😀 проходим' if item['price_lipetsk'] >= item['recommended_lipetsk'] else '😢 не проходим'} 
-💰 🅱️: {item['price_balakovo']} {'😀 проходим' if item['price_balakovo'] >= item['recommended_balakovo'] else '😢 не проходим'} 
+{prices_info}
 
 🤔 Отдаем? Сможете привезти?
 """
-# 📦 Есть: 🆂 {item['store_saratov']}, 🆅 {item['store_voronezh']}, 🅻 {item['store_lipetsk']}, 🅱️ {item['store_balakovo']}
-# 💖 Рекомендуемые цены: 🆂 {item['recommended_saratov']}, 🆅 {item['recommended_voronezh']}, 🅻 {item['recommended_lipetsk']}, 🅱️ {item['recommended_balakovo']}
+    # 📦 Есть: 🆂 {item['store_saratov']}, 🆅 {item['store_voronezh']}, 🅻 {item['store_lipetsk']}, 🅱️ {item['store_balakovo']}
+    # 💖 Рекомендуемые цены: 🆂 {item['recommended_saratov']}, 🆅 {item['recommended_voronezh']}, 🅻 {item['recommended_lipetsk']}, 🅱️ {item['recommended_balakovo']}
     return template.strip()
 
 def handle_query(query):
@@ -136,6 +152,7 @@ def handle_query(query):
         update_cache()
     except Exception as e:
         if isinstance(query, int):
+            print(f"Error updating cache: {e}")
             return f"Server error: {e}. Try again later."
         else:
             return "Server error, send the request as a number and contact Ivan."
