@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.2
+// @version      2.1.3
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -364,6 +364,11 @@ function loadFromLocalStorage() {
     return savedData ? JSON.parse(savedData) : null;
 }
 
+// Функция для генерации строки с рассрочкой
+function generateInstallmentText(price, months) {
+    return `🔹 ${months} мес.: ${price} руб. (от ${Math.round(price / months)} руб./мес)`;
+}
+
 function calculate() {
     const cashInput = document.getElementById('calculatorCashInput');
     const modeSelect = document.getElementById('calculatorModeSelect');
@@ -399,21 +404,25 @@ function calculate() {
     const rassrochka_price_thirtysix = Math.round(cash * rates.thirtysix / 100) * 100 - 10;
     const cashback_amount = Math.round(cash * 0.01);
 
-    resultField.value = `
-💵 Наличными: ${cash} руб.
-📷 QR: ${qr_price} руб.
-💳 Картой: ${card_price} руб.
+    const resultText = `
+    💵 Наличными: ${cash} руб.
+    📷 QR: ${qr_price} руб.
+    💳 Картой: ${card_price} руб.
+    
+    🏦 Рассрочка
+    ${[
+        generateInstallmentText(rassrochka_price_six, 6),
+        generateInstallmentText(rassrochka_price_ten, 10),
+        generateInstallmentText(rassrochka_price_twelve, 12),
+        generateInstallmentText(rassrochka_price_eighteen, 18),
+        generateInstallmentText(rassrochka_price_twentyfour, 24),
+        generateInstallmentText(rassrochka_price_thirtysix, 36)
+    ].join('\n')}
+    
+    💸 Кэшбэк: ${cashback_amount} баллами
+    `.trim();
 
-🏦 Рассрочка
-🔹 6 мес.: ${rassrochka_price_six} руб. (от ${Math.round(rassrochka_price_six / 6)} руб./мес)
-🔹 10 мес.: ${rassrochka_price_ten} руб. (от ${Math.round(rassrochka_price_ten / 10)} руб./мес)
-🔹 12 мес.: ${rassrochka_price_twelve} руб. (от ${Math.round(rassrochka_price_twelve / 12)} руб./мес)
-🔹 18 мес.: ${rassrochka_price_eighteen} руб. (от ${Math.round(rassrochka_price_eighteen / 18)} руб./мес)
-🔹 24 мес.: ${rassrochka_price_twentyfour} руб. (от ${Math.round(rassrochka_price_twentyfour / 24)} руб./мес)
-🔹 36 мес.: ${rassrochka_price_thirtysix} руб. (от ${Math.round(rassrochka_price_thirtysix / 36)} руб./мес)
-
-💸 Кэшбэк: ${cashback_amount} баллами
-`.trim();
+    resultField.value = resultText;
 }
 
 function reverseCalculate() {
