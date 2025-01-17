@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.4
+// @version      2.1.5
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -114,6 +114,14 @@ function createPriceCheckWindow() {
                         <option value="0">менее 85%</option>
                     </select>
                 </div>
+                <div style="margin-bottom: 10px;">
+    <label>Комплектация:</label>
+    <select id="tradeInDeviceConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+        <option value="device_only">Только устройство</option>
+        <option value="device_box">Устройство и коробка</option>
+        <option value="full">Полный комплект</option>
+    </select>
+</div>
                 <div style="margin-bottom: 10px;">
                     <select id="tradeInConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
                         <option value="excellent">Отлично</option>
@@ -563,9 +571,10 @@ function calculateTradeIn(data) {
     const model = document.getElementById('tradeInModelSelect').value;
     const memory = document.getElementById('tradeInMemorySelect').value;
     const battery = document.getElementById('tradeInBatterySelect').value;
+    const deviceCondition = document.getElementById('tradeInDeviceConditionSelect').value; // Новый параметр
+    const backCover = document.getElementById('backCoverCheck').checked;
+    const screen = document.getElementById('screenCheck').checked;
     const condition = document.getElementById('tradeInConditionSelect').value;
-    const backCover = document.getElementById('backCoverCheck').checked; // Добавляем чекбокс для крышки
-    const screen = document.getElementById('screenCheck').checked; // Добавляем чекбокс для дисплея
 
     const modelData = data[model].find(item => item.memory === memory);
     if (!modelData) {
@@ -580,6 +589,13 @@ function calculateTradeIn(data) {
         price += parseInt(modelData.battery_replacement, 10);
     } else if (battery === '85') {
         price += parseInt(modelData.battery_wear, 10);
+    }
+
+    // Корректировка цены в зависимости от комплектации
+    if (deviceCondition === 'device_only') {
+        price += parseInt(modelData.device_only, 10);
+    } else if (deviceCondition === 'device_box') {
+        price += parseInt(modelData.device_box, 10);
     }
 
     // Корректировка цены в зависимости от состояния устройства
@@ -610,7 +626,7 @@ function calculateTradeIn(data) {
     const result = `
 📱 Модель: ${model} (${memory} GB)
 🔋 Батарея: ${battery === '90' ? '90%+' : battery === '85' ? '85-90%' : 'менее 85%'}
-📦 Состояние: ${condition === 'excellent' ? 'Отлично' : condition === 'good' ? 'Хорошо' : condition === 'average' ? 'Среднее' : 'Плохо'}
+📦 Комплект: ${deviceCondition === 'device_only' ? 'Только устройство' : deviceCondition === 'device_box' ? 'Устройство и коробка' : 'Полный комплект'}
 ${backCoverStatus}
 ${screenStatus}
 ${conditionEmoji} Состояние: ${condition === 'excellent' ? 'Отличное' : condition === 'good' ? 'Хорошее' : condition === 'average' ? 'Среднее' : 'Плохое'}
