@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.1
+// @version      2.1.2
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -12,74 +12,49 @@
 'use strict';
 
 // Константы
-const superserver = 'memchat.tw1.ru:5000'; // Основной сервер
-const baseUrls = [ // Базовые URL для Hatiko
+const SUPERSERVER = 'memchat.tw1.ru:5000'; // Основной сервер
+const BASE_URLS = [ // Базовые URL для Hatiko
     "https://hatiko.ru",
     "https://voronezh.hatiko.ru",
     "https://lipetsk.hatiko.ru",
     "https://balakovo.hatiko.ru"
 ];
-
-// Константы для калькулятора
 const UPDATE_INTERVAL = 12 * 60 * 60 * 1000; // 12 часов
-let rateConfigurations = {};
-const jsonUrl = "https://raw.githubusercontent.com/xtalia/hatiko/refs/heads/main/js/calculatorRates.json";
+const JSON_URL = "https://raw.githubusercontent.com/xtalia/hatiko/refs/heads/main/js/calculatorRates.json";
 
 // Переменные для управления окнами
 let isDragging = false;
 let offset = { x: 0, y: 0 };
-
-// Переменные для управления очисткой текста
 let enabled = false;  // По умолчанию скрипт отключен
 let commandId;
+let rateConfigurations = {};
 
 // Универсальная функция для выполнения запросов к серверу
 function fetchServerData(url, onSuccess, onError) {
     GM_xmlhttpRequest({
         method: 'GET',
         url: url,
-        onload: function(response) {
-            if (response.status === 200) {
-                onSuccess(response);
-            } else {
-                onError(`Ошибка: ${response.statusText}`);
-            }
-        },
-        onerror: function(error) {
-            onError(`Ошибка при выполнении запроса: ${error}`);
-        }
+        onload: (response) => response.status === 200 ? onSuccess(response) : onError(`Ошибка: ${response.statusText}`),
+        onerror: (error) => onError(`Ошибка при выполнении запроса: ${error}`)
     });
 }
 
 // Функция для раскрытия всех скрытых элементов в карточке товара
 function showAllTabContents() {
-    const hiddenElements = document.querySelectorAll('.tab-content .hidden');
-    hiddenElements.forEach(element => {
-        element.classList.remove('hidden');
-    });
+    document.querySelectorAll('.tab-content .hidden').forEach(element => element.classList.remove('hidden'));
 }
 
 // Функция для создания окна проверки цен
 function createPriceCheckWindow() {
     if (!window.priceCheckContainer) {
         const container = document.createElement('div');
-        container.setAttribute('id', 'priceCheckContainer');
+        container.id = 'priceCheckContainer';
         container.style.cssText = `
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            width: 360px;
-            background: #fff;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            padding: 10px;
-            display: none;
-            z-index: 9999;
-            box-sizing: border-box;
+            position: fixed; top: 10px; right: 10px; width: 360px; background: #fff; border: 1px solid #ccc;
+            border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 10px; display: none;
+            z-index: 9999; box-sizing: border-box;
         `;
 
-        // Внутренняя структура окна
         container.innerHTML = `
             <div id="priceCheckHeader" style="font-size: 18px; font-weight: bold; margin-bottom: 10px; user-select: none; cursor: move;">
                 Мемный чат
@@ -102,8 +77,6 @@ function createPriceCheckWindow() {
                 <button id="showAllTabsButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📂 Раскрыть все</button>
                 <button id="toggleClearTextAndTimeoutButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧹 Очистка и задержка</button>
             </div>
-
-            <!-- Калькулятор -->
             <div id="calculator" style="display: none; margin-top: 10px;">
                 <div style="margin-bottom: 10px;">
                     <input type="number" id="calculatorCashInput" placeholder="Введите сумму" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
@@ -127,8 +100,6 @@ function createPriceCheckWindow() {
                 </div>
                 <button id="calculatorApplyDiscountButton" style="width: 100%; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Применить скидку</button>
             </div>
-
-            <!-- Калькулятор Trade-In -->
             <div id="tradeInCalculator" style="display: none; margin-top: 10px;">
                 <div style="margin-bottom: 10px;">
                     <select id="tradeInModelSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
@@ -152,14 +123,10 @@ function createPriceCheckWindow() {
                     </select>
                 </div>
                 <div style="margin-bottom: 10px;">
-                    <label>
-                        <input type="checkbox" id="backCoverCheck"> Замена крышки
-                    </label>
+                    <label><input type="checkbox" id="backCoverCheck"> Замена крышки</label>
                 </div>
                 <div style="margin-bottom: 10px;">
-                    <label>
-                        <input type="checkbox" id="screenCheck"> Замена дисплея
-                    </label>
+                    <label><input type="checkbox" id="screenCheck"> Замена дисплея</label>
                 </div>
                 <div style="margin-bottom: 10px;">
                     <textarea id="tradeInResult" style="width: 100%; height: 100px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
@@ -169,8 +136,6 @@ function createPriceCheckWindow() {
                     <button id="tradeInCloseButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">Закрыть</button>
                 </div>
             </div>
-
-            <!-- Окно для очистки текста и настройки задержки -->
             <div id="clearTextAndTimeoutWindow" style="display: none; margin-top: 10px;">
                 <label style="display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="clearTextCheckbox"> Очищать текст после Enter
@@ -185,8 +150,7 @@ function createPriceCheckWindow() {
         document.body.appendChild(container);
 
         // Настройка перетаскивания окна
-        const header = document.getElementById('priceCheckHeader');
-        header.addEventListener('mousedown', startDrag);
+        document.getElementById('priceCheckHeader').addEventListener('mousedown', startDrag);
 
         // Обработчики кнопок
         document.getElementById('priceCheckButton').addEventListener('click', checkPrice);
@@ -202,21 +166,17 @@ function createPriceCheckWindow() {
             clearTextAndTimeoutWindow.style.display = clearTextAndTimeoutWindow.style.display === 'none' ? 'block' : 'none';
         });
 
-
         // Обработчики кнопок калькулятора
-document.getElementById('calculatorCalculateButton').addEventListener('click', calculate);
-document.getElementById('calculatorReverseButton').addEventListener('click', reverseCalculate);
-document.getElementById('calculatorApplyDiscountButton').addEventListener('click', applyDiscount);
+        document.getElementById('calculatorCalculateButton').addEventListener('click', calculate);
+        document.getElementById('calculatorReverseButton').addEventListener('click', reverseCalculate);
+        document.getElementById('calculatorApplyDiscountButton').addEventListener('click', applyDiscount);
 
         // Обработчик для галочки очистки текста
-        document.getElementById('clearTextCheckbox').addEventListener('change', (event) => {
-            enabled = event.target.checked;
-        });
+        document.getElementById('clearTextCheckbox').addEventListener('change', (event) => enabled = event.target.checked);
 
         // Обработчик для ползунка задержки
         document.getElementById('timeoutSlider').addEventListener('input', (event) => {
-            const timeoutValue = document.getElementById('timeoutValue');
-            timeoutValue.textContent = event.target.value;
+            document.getElementById('timeoutValue').textContent = event.target.value;
         });
 
         // Обработчик Enter в поле ввода
@@ -225,9 +185,7 @@ document.getElementById('calculatorApplyDiscountButton').addEventListener('click
         });
 
         // Кнопка закрытия окна
-        document.getElementById('priceCheckCloseButton').addEventListener('click', () => {
-            container.style.display = 'none';
-        });
+        document.getElementById('priceCheckCloseButton').addEventListener('click', () => container.style.display = 'none');
 
         window.priceCheckContainer = container;
     }
@@ -256,7 +214,7 @@ function parseHTML(responseText) {
         const relativeLink = product.getAttribute("href");
         const priceElement = doc.querySelector("span.price");
         const price = priceElement ? priceElement.textContent.replace(" ", "") : "Нет данных";
-        const link = new URL(relativeLink, baseUrls[0]).href;
+        const link = new URL(relativeLink, BASE_URLS[0]).href;
         return { title, price, link };
     }
     return { title: "Нет данных", price: "Нет данных", link: "Нет данных" };
@@ -266,16 +224,16 @@ function parseHTML(responseText) {
 function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (query !== '') {
-        const urls = baseUrls.map(url => `${url}/search/?query=${encodeURIComponent(query)}`);
+        const urls = BASE_URLS.map(url => `${url}/search/?query=${encodeURIComponent(query)}`);
         let results = [];
         let requestsCompleted = 0;
 
         urls.forEach((url, index) => {
             fetchServerData(
                 url,
-                function(response) {
+                (response) => {
                     const data = parseHTML(response.responseText);
-                    results[index] = { ...data, link: `${baseUrls[index]}${new URL(data.link).pathname}` };
+                    results[index] = { ...data, link: `${BASE_URLS[index]}${new URL(data.link).pathname}` };
                     requestsCompleted++;
                     if (requestsCompleted === urls.length) {
                         let messageText = `🧭 ${results[0].title}\n`;
@@ -292,9 +250,7 @@ function checkHatiko() {
                         resetTextareaHeight();
                     }
                 },
-                function(error) {
-                    document.getElementById('priceCheckResult').value = error;
-                }
+                (error) => document.getElementById('priceCheckResult').value = error
             );
         });
     } else {
@@ -332,16 +288,11 @@ function stopDrag() {
 function checkPrice() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (query !== '') {
-        const url = `http://${superserver}/memchat?query=${encodeURIComponent(query)}`;
+        const url = `http://${SUPERSERVER}/memchat?query=${encodeURIComponent(query)}`;
         fetchServerData(
             url,
-            function(response) {
-                document.getElementById('priceCheckResult').value = response.responseText;
-                resetTextareaHeight();
-            },
-            function(error) {
-                document.getElementById('priceCheckResult').value = error;
-            }
+            (response) => document.getElementById('priceCheckResult').value = response.responseText,
+            (error) => document.getElementById('priceCheckResult').value = error
         );
     } else {
         document.getElementById('priceCheckResult').value = 'Введите запрос';
@@ -352,31 +303,25 @@ function checkPrice() {
 // Функция для сброса высоты textarea
 function resetTextareaHeight() {
     const textarea = document.getElementById('priceCheckResult');
-    if (textarea) {
-        textarea.style.height = '120px';
-    }
+    if (textarea) textarea.style.height = '120px';
 }
 
 // Функция для принудительного обновления цен
 function forceUpdate() {
-    const url = `http://${superserver}/memchat?force=true`;
+    const url = `http://${SUPERSERVER}/memchat?force=true`;
     fetchServerData(
         url,
-        function(response) {
-            alert('Принудительное обновление выполнено успешно!');
-        },
-        function(error) {
-            alert(error);
-        }
+        () => alert('Принудительное обновление выполнено успешно!'),
+        (error) => alert(error)
     );
 }
 
 // Функция для получения информации о том, кто работает
 function fetchWhoWorks(day) {
-    const url = `http://${superserver}/who_work?day=${day}`;
+    const url = `http://${SUPERSERVER}/who_work?day=${day}`;
     fetchServerData(
         url,
-        function(response) {
+        (response) => {
             const contentType = response.responseHeaders.match(/content-type:\s*([\w\/\-]+)/i)[1];
             if (contentType.includes('json')) {
                 const data = JSON.parse(response.responseText);
@@ -385,19 +330,15 @@ function fetchWhoWorks(day) {
                 document.getElementById('priceCheckResult').value = 'Ошибка: Ответ не в формате JSON';
             }
         },
-        function(error) {
-            document.getElementById('priceCheckResult').value = error;
-        }
+        (error) => document.getElementById('priceCheckResult').value = error
     );
 }
 
 // Функции для калькулятора
 async function loadRateConfigurations() {
     try {
-        const response = await fetch(jsonUrl);
-        if (!response.ok) {
-            throw new Error(`Ошибка загрузки JSON: ${response.status}`);
-        }
+        const response = await fetch(JSON_URL);
+        if (!response.ok) throw new Error(`Ошибка загрузки JSON: ${response.status}`);
         rateConfigurations = await response.json();
         console.log("Данные rateConfigurations загружены:", rateConfigurations);
         saveToLocalStorage(rateConfigurations);
@@ -437,13 +378,11 @@ function calculate() {
     }
 
     if (mode === 'prepay') {
-        const prepayPercentage = 0.05;
-        const prepayAmount = Math.ceil(cash * prepayPercentage / 500) * 500;
+        const prepayAmount = Math.ceil(cash * 0.05 / 500) * 500;
         resultField.value = `Предоплата 5%: ${prepayAmount} рублей\n`;
         return;
     }
 
-    // Проверяем, загружены ли данные для выбранного режима
     if (!rateConfigurations[mode]) {
         resultField.value = 'Ошибка: Данные для выбранного режима не загружены.';
         return;
@@ -540,11 +479,7 @@ function applyDiscount() {
 // Функция для показа/скрытия калькулятора
 function toggleCalculator() {
     const calculator = document.getElementById('calculator');
-    if (calculator.style.display === 'none') {
-        calculator.style.display = 'block'; // Показываем калькулятор
-    } else {
-        calculator.style.display = 'none'; // Скрываем калькулятор
-    }
+    calculator.style.display = calculator.style.display === 'none' ? 'block' : 'none';
 }
 
 // Функция для показа/скрытия калькулятора Trade-In
@@ -560,10 +495,10 @@ function toggleTradeInCalculator() {
 
 // Функция для загрузки данных Trade-In
 function loadTradeInData() {
-    const url = `http://${superserver}/load_tn`;
+    const url = `http://${SUPERSERVER}/load_tn`;
     fetchServerData(
         url,
-        function(response) {
+        (response) => {
             if (response.status === 200) {
                 const data = JSON.parse(response.responseText);
                 populateTradeInOptions(data);
@@ -571,9 +506,7 @@ function loadTradeInData() {
                 console.error('Ошибка при загрузке данных Trade-In');
             }
         },
-        function(error) {
-            console.error('Ошибка при загрузке данных Trade-In:', error);
-        }
+        (error) => console.error('Ошибка при загрузке данных Trade-In:', error)
     );
 }
 
@@ -604,9 +537,7 @@ function populateTradeInOptions(data) {
     });
 
     // Обработчик для кнопки расчета
-    document.getElementById('tradeInCalculateButton').addEventListener('click', () => {
-        calculateTradeIn(data);
-    });
+    document.getElementById('tradeInCalculateButton').addEventListener('click', () => calculateTradeIn(data));
 }
 
 // Функция для расчета Trade-In
@@ -678,9 +609,7 @@ ${conditionEmoji} Состояние: ${condition === 'excellent' ? 'Отлич�
 function clearText(event) {
     if (event.key === "Enter" && enabled) {
         const timeoutValue = parseInt(document.getElementById('timeoutSlider').value, 10);
-        setTimeout(() => {
-            event.target.value = ""; // Очистка текстового поля
-        }, timeoutValue);  // Выполняется после обработки ввода на странице
+        setTimeout(() => event.target.value = "", timeoutValue);  // Очистка текстового поля
     }
 }
 
@@ -692,9 +621,7 @@ function toggleScript() {
 
 // Функция обновления пункта меню
 function updateMenu() {
-    if (commandId) {
-        GM_unregisterMenuCommand(commandId);
-    }
+    if (commandId) GM_unregisterMenuCommand(commandId);
     const menuText = enabled ? "Отключить очистку текста по Enter" : "Включить очистку текста по Enter";
     commandId = GM_registerMenuCommand(menuText, toggleScript);
 }
