@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.3
+// @version      2.1.4
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -366,7 +366,16 @@ function loadFromLocalStorage() {
 
 // Функция для генерации строки с рассрочкой
 function generateInstallmentText(price, months) {
-    return `🔹 ${months} мес.: ${price} руб. (от ${Math.round(price / months)} руб./мес)`;
+    return `    🔹 ${months} мес.: ${price} руб. (от ${Math.round(price / months)} руб./мес)`;
+}
+
+function formatText(text) {
+    // Разделяем текст на строки, убираем пустые строки и лишние пробелы
+    return text
+        .split('\n') // Разделяем текст на массив строк
+        .map(line => line.trim()) // Убираем лишние пробелы в каждой строке
+        .filter(line => line !== '') // Убираем пустые строки
+        .join('\n'); // Собираем обратно в одну строку с переносами
 }
 
 function calculate() {
@@ -404,25 +413,25 @@ function calculate() {
     const rassrochka_price_thirtysix = Math.round(cash * rates.thirtysix / 100) * 100 - 10;
     const cashback_amount = Math.round(cash * 0.01);
 
-    const resultText = `
-    💵 Наличными: ${cash} руб.
-    📷 QR: ${qr_price} руб.
-    💳 Картой: ${card_price} руб.
-    
-    🏦 Рассрочка
-    ${[
-        generateInstallmentText(rassrochka_price_six, 6),
-        generateInstallmentText(rassrochka_price_ten, 10),
-        generateInstallmentText(rassrochka_price_twelve, 12),
-        generateInstallmentText(rassrochka_price_eighteen, 18),
-        generateInstallmentText(rassrochka_price_twentyfour, 24),
-        generateInstallmentText(rassrochka_price_thirtysix, 36)
-    ].join('\n')}
-    
-    💸 Кэшбэк: ${cashback_amount} баллами
-    `.trim();
-
-    resultField.value = resultText;
+    const resultText = formatText(`
+        💵 Наличными: ${cash} руб.
+        📷 QR: ${qr_price} руб.
+        💳 Картой: ${card_price} руб.
+        
+        🏦 Рассрочка
+        ${[
+         generateInstallmentText(rassrochka_price_six, 6),
+         generateInstallmentText(rassrochka_price_ten, 10),
+         generateInstallmentText(rassrochka_price_twelve, 12),
+         generateInstallmentText(rassrochka_price_eighteen, 18),
+         generateInstallmentText(rassrochka_price_twentyfour, 24),
+         generateInstallmentText(rassrochka_price_thirtysix, 36)
+        ].join('\n')}
+        
+        💸 Кэшбэк: ${cashback_amount} баллами
+        `);
+        
+        resultField.value = resultText;
 }
 
 function reverseCalculate() {
