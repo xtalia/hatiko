@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.1.1
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -28,6 +28,28 @@ const jsonUrl = "https://raw.githubusercontent.com/xtalia/hatiko/refs/heads/main
 // Переменные для управления окнами
 let isDragging = false;
 let offset = { x: 0, y: 0 };
+
+// Переменные для управления очисткой текста
+let enabled = false;  // По умолчанию скрипт отключен
+let commandId;
+
+// Универсальная функция для выполнения запросов к серверу
+function fetchServerData(url, onSuccess, onError) {
+    GM_xmlhttpRequest({
+        method: 'GET',
+        url: url,
+        onload: function(response) {
+            if (response.status === 200) {
+                onSuccess(response);
+            } else {
+                onError(`Ошибка: ${response.statusText}`);
+            }
+        },
+        onerror: function(error) {
+            onError(`Ошибка при выполнении запроса: ${error}`);
+        }
+    });
+}
 
 // Функция для раскрытия всех скрытых элементов в карточке товара
 function showAllTabContents() {
@@ -60,24 +82,26 @@ function createPriceCheckWindow() {
         // Внутренняя структура окна
         container.innerHTML = `
             <div id="priceCheckHeader" style="font-size: 18px; font-weight: bold; margin-bottom: 10px; user-select: none; cursor: move;">
-        Мемный чат
-        <span id="priceCheckCloseButton" style="position: absolute; top: 10px; right: 10px; cursor: pointer;">&#10006;</span>
-    </div>
-    <div style="margin-bottom: 10px;">
-        <input type="text" id="priceCheckInput" placeholder="Введите запрос..." style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-    </div>
-    <div style="margin-bottom: 10px;">
-        <textarea id="priceCheckResult" style="width: 100%; height: 120px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
-    </div>
-    <div id="priceCheckControls" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;">
-        <button id="priceCheckButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🤖</button>
-        <button id="hatikoButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🐶</button>
-        <button id="copyButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📋</button>
-        <button id="whoWorksTodayButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">👨‍💼 Сегодня</button>
-        <button id="whoWorksTomorrowButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">👨‍💼 Завтра</button>
-        <button id="calculatorButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Калькулятор</button>
-        <button id="tradeInButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📱 Trade-In</button>
-    </div>
+                Мемный чат
+                <span id="priceCheckCloseButton" style="position: absolute; top: 10px; right: 10px; cursor: pointer;">&#10006;</span>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <input type="text" id="priceCheckInput" placeholder="Введите запрос..." style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            </div>
+            <div style="margin-bottom: 10px;">
+                <textarea id="priceCheckResult" style="width: 100%; height: 120px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
+            </div>
+            <div id="priceCheckControls" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;">
+                <button id="priceCheckButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🤖</button>
+                <button id="hatikoButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🐶</button>
+                <button id="copyButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📋</button>
+                <button id="whoWorksTodayButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">👨‍💼 Сегодня</button>
+                <button id="whoWorksTomorrowButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">👨‍💼 Завтра</button>
+                <button id="calculatorButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Калькулятор</button>
+                <button id="tradeInButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📱 Trade-In</button>
+                <button id="showAllTabsButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📂 Раскрыть все</button>
+                <button id="toggleClearTextAndTimeoutButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧹 Очистка и задержка</button>
+            </div>
 
             <!-- Калькулятор -->
             <div id="calculator" style="display: none; margin-top: 10px;">
@@ -105,48 +129,59 @@ function createPriceCheckWindow() {
             </div>
 
             <!-- Калькулятор Trade-In -->
-<div id="tradeInCalculator" style="display: none; margin-top: 10px;">
-    <div style="margin-bottom: 10px;">
-        <select id="tradeInModelSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
-    </div>
-    <div style="margin-bottom: 10px;">
-        <select id="tradeInMemorySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
-    </div>
-    <div style="margin-bottom: 10px;">
-        <select id="tradeInBatterySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-            <option value="90">90%+</option>
-            <option value="85">85-90%</option>
-            <option value="0">менее 85%</option>
-        </select>
-    </div>
-    <div style="margin-bottom: 10px;">
-        <select id="tradeInConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-            <option value="excellent">Отлично</option>
-            <option value="good">Хорошо</option>
-            <option value="average">Среднее</option>
-            <option value="poor">Плохое</option>
-        </select>
-    </div>
-    <!-- Чекбоксы для замены крышки и дисплея -->
-    <div style="margin-bottom: 10px;">
-        <label>
-            <input type="checkbox" id="backCoverCheck"> Замена крышки
-        </label>
-    </div>
-    <div style="margin-bottom: 10px;">
-        <label>
-            <input type="checkbox" id="screenCheck"> Замена дисплея
-        </label>
-    </div>
-    <div style="margin-bottom: 10px;">
-        <textarea id="tradeInResult" style="width: 100%; height: 100px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
-    </div>
-    <div style="display: flex; gap: 5px;">
-        <button id="tradeInCalculateButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Рассчитать</button>
-        <button id="tradeInCloseButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">Закрыть</button>
-    </div>
-</div>
+            <div id="tradeInCalculator" style="display: none; margin-top: 10px;">
+                <div style="margin-bottom: 10px;">
+                    <select id="tradeInModelSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <select id="tradeInMemorySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <select id="tradeInBatterySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+                        <option value="90">90%+</option>
+                        <option value="85">85-90%</option>
+                        <option value="0">менее 85%</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <select id="tradeInConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+                        <option value="excellent">Отлично</option>
+                        <option value="good">Хорошо</option>
+                        <option value="average">Среднее</option>
+                        <option value="poor">Плохое</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label>
+                        <input type="checkbox" id="backCoverCheck"> Замена крышки
+                    </label>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label>
+                        <input type="checkbox" id="screenCheck"> Замена дисплея
+                    </label>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <textarea id="tradeInResult" style="width: 100%; height: 100px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button id="tradeInCalculateButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Рассчитать</button>
+                    <button id="tradeInCloseButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">Закрыть</button>
+                </div>
+            </div>
+
+            <!-- Окно для очистки текста и настройки задержки -->
+            <div id="clearTextAndTimeoutWindow" style="display: none; margin-top: 10px;">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="clearTextCheckbox"> Очищать текст после Enter
+                    <span style="flex: 1;">
+                        Задержка (мс): <input type="range" id="timeoutSlider" min="1" max="1000" value="500">
+                        <span id="timeoutValue">500</span>
+                    </span>
+                </label>
+            </div>
         `;
+
         document.body.appendChild(container);
 
         // Настройка перетаскивания окна
@@ -161,16 +196,27 @@ function createPriceCheckWindow() {
         document.getElementById('whoWorksTomorrowButton').addEventListener('click', () => fetchWhoWorks('tomorrow'));
         document.getElementById('calculatorButton').addEventListener('click', toggleCalculator);
         document.getElementById('tradeInButton').addEventListener('click', toggleTradeInCalculator);
+        document.getElementById('showAllTabsButton').addEventListener('click', showAllTabContents);
+        document.getElementById('toggleClearTextAndTimeoutButton').addEventListener('click', () => {
+            const clearTextAndTimeoutWindow = document.getElementById('clearTextAndTimeoutWindow');
+            clearTextAndTimeoutWindow.style.display = clearTextAndTimeoutWindow.style.display === 'none' ? 'block' : 'none';
+        });
+
 
         // Обработчики кнопок калькулятора
-        document.getElementById('calculatorCalculateButton').addEventListener('click', calculate);
-        document.getElementById('calculatorReverseButton').addEventListener('click', reverseCalculate);
-        document.getElementById('calculatorApplyDiscountButton').addEventListener('click', applyDiscount);
+document.getElementById('calculatorCalculateButton').addEventListener('click', calculate);
+document.getElementById('calculatorReverseButton').addEventListener('click', reverseCalculate);
+document.getElementById('calculatorApplyDiscountButton').addEventListener('click', applyDiscount);
 
-        // Обработчики кнопок Trade-In
-        document.getElementById('tradeInCalculateButton').addEventListener('click', calculateTradeIn);
-        document.getElementById('tradeInCloseButton').addEventListener('click', () => {
-            document.getElementById('tradeInCalculator').style.display = 'none';
+        // Обработчик для галочки очистки текста
+        document.getElementById('clearTextCheckbox').addEventListener('change', (event) => {
+            enabled = event.target.checked;
+        });
+
+        // Обработчик для ползунка задержки
+        document.getElementById('timeoutSlider').addEventListener('input', (event) => {
+            const timeoutValue = document.getElementById('timeoutValue');
+            timeoutValue.textContent = event.target.value;
         });
 
         // Обработчик Enter в поле ввода
@@ -225,10 +271,9 @@ function checkHatiko() {
         let requestsCompleted = 0;
 
         urls.forEach((url, index) => {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: url,
-                onload: function(response) {
+            fetchServerData(
+                url,
+                function(response) {
                     const data = parseHTML(response.responseText);
                     results[index] = { ...data, link: `${baseUrls[index]}${new URL(data.link).pathname}` };
                     requestsCompleted++;
@@ -247,10 +292,10 @@ function checkHatiko() {
                         resetTextareaHeight();
                     }
                 },
-                onerror: function() {
-                    document.getElementById('priceCheckResult').value = 'Ошибка при выполнении запроса';
+                function(error) {
+                    document.getElementById('priceCheckResult').value = error;
                 }
-            });
+            );
         });
     } else {
         document.getElementById('priceCheckResult').value = 'Введите запрос';
@@ -288,24 +333,16 @@ function checkPrice() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (query !== '') {
         const url = `http://${superserver}/memchat?query=${encodeURIComponent(query)}`;
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: url,
-            headers: {
-                'Content-Type': 'application/json'
+        fetchServerData(
+            url,
+            function(response) {
+                document.getElementById('priceCheckResult').value = response.responseText;
+                resetTextareaHeight();
             },
-            onload: function(response) {
-                if (response.status === 200) {
-                    document.getElementById('priceCheckResult').value = response.responseText;
-                    resetTextareaHeight();
-                } else {
-                    document.getElementById('priceCheckResult').value = 'Ошибка при выполнении запроса';
-                }
-            },
-            onerror: function() {
-                document.getElementById('priceCheckResult').value = 'Ошибка при выполнении запроса';
+            function(error) {
+                document.getElementById('priceCheckResult').value = error;
             }
-        });
+        );
     } else {
         document.getElementById('priceCheckResult').value = 'Введите запрос';
         resetTextareaHeight();
@@ -323,48 +360,35 @@ function resetTextareaHeight() {
 // Функция для принудительного обновления цен
 function forceUpdate() {
     const url = `http://${superserver}/memchat?force=true`;
-    GM_xmlhttpRequest({
-        method: 'GET',
-        url: url,
-        headers: {
-            'Content-Type': 'application/json'
+    fetchServerData(
+        url,
+        function(response) {
+            alert('Принудительное обновление выполнено успешно!');
         },
-        onload: function(response) {
-            if (response.status === 200) {
-                alert('Принудительное обновление выполнено успешно!');
-            } else {
-                alert('Ошибка при выполнении принудительного обновления');
-            }
-        },
-        onerror: function() {
-            alert('Ошибка при выполнении принудительного обновления');
+        function(error) {
+            alert(error);
         }
-    });
+    );
 }
 
 // Функция для получения информации о том, кто работает
 function fetchWhoWorks(day) {
-    GM_xmlhttpRequest({
-        method: 'GET',
-        url: `http://${superserver}/who_work?day=${day}`,
-        onload: function(response) {
-            if (response.status === 200) {
-                const contentType = response.responseHeaders.match(/content-type:\s*([\w\/\-]+)/i)[1];
-                if (contentType.includes('json')) {
-                    const data = JSON.parse(response.responseText);
-                    document.getElementById('priceCheckResult').value = data.text.replace(/\n/g, '\n');
-                } else {
-                    document.getElementById('priceCheckResult').value = 'Ошибка: Ответ не в формате JSON';
-                }
+    const url = `http://${superserver}/who_work?day=${day}`;
+    fetchServerData(
+        url,
+        function(response) {
+            const contentType = response.responseHeaders.match(/content-type:\s*([\w\/\-]+)/i)[1];
+            if (contentType.includes('json')) {
+                const data = JSON.parse(response.responseText);
+                document.getElementById('priceCheckResult').value = data.text.replace(/\n/g, '\n');
             } else {
-                document.getElementById('priceCheckResult').value = `Ошибка при получении данных: ${response.statusText}`;
+                document.getElementById('priceCheckResult').value = 'Ошибка: Ответ не в формате JSON';
             }
         },
-        onerror: function(error) {
-            document.getElementById('priceCheckResult').value = `Ошибка при получении данных: ${error}`;
-            console.error('Ошибка при получении данных:', error);
+        function(error) {
+            document.getElementById('priceCheckResult').value = error;
         }
-    });
+    );
 }
 
 // Функции для калькулятора
@@ -385,6 +409,7 @@ async function loadRateConfigurations() {
             console.log("Используются данные из локального хранилища:", rateConfigurations);
         } else {
             console.error("Данные недоступны в локальном хранилище.");
+            rateConfigurations = {}; // Убедимся, что rateConfigurations не undefined
         }
     }
 }
@@ -415,6 +440,12 @@ function calculate() {
         const prepayPercentage = 0.05;
         const prepayAmount = Math.ceil(cash * prepayPercentage / 500) * 500;
         resultField.value = `Предоплата 5%: ${prepayAmount} рублей\n`;
+        return;
+    }
+
+    // Проверяем, загружены ли данные для выбранного режима
+    if (!rateConfigurations[mode]) {
+        resultField.value = 'Ошибка: Данные для выбранного режима не загружены.';
         return;
     }
 
@@ -529,10 +560,10 @@ function toggleTradeInCalculator() {
 
 // Функция для загрузки данных Trade-In
 function loadTradeInData() {
-    GM_xmlhttpRequest({
-        method: 'GET',
-        url: `http://${superserver}/load_tn`,
-        onload: function(response) {
+    const url = `http://${superserver}/load_tn`;
+    fetchServerData(
+        url,
+        function(response) {
             if (response.status === 200) {
                 const data = JSON.parse(response.responseText);
                 populateTradeInOptions(data);
@@ -540,10 +571,10 @@ function loadTradeInData() {
                 console.error('Ошибка при загрузке данных Trade-In');
             }
         },
-        onerror: function() {
-            console.error('Ошибка при загрузке данных Trade-In');
+        function(error) {
+            console.error('Ошибка при загрузке данных Trade-In:', error);
         }
-    });
+    );
 }
 
 // Функция для заполнения выпадающих списков Trade-In
@@ -643,19 +674,42 @@ ${conditionEmoji} Состояние: ${condition === 'excellent' ? 'Отлич�
     document.getElementById('tradeInResult').value = result;
 }
 
+// Функция для очистки текста после нажатия Enter
+function clearText(event) {
+    if (event.key === "Enter" && enabled) {
+        const timeoutValue = parseInt(document.getElementById('timeoutSlider').value, 10);
+        setTimeout(() => {
+            event.target.value = ""; // Очистка текстового поля
+        }, timeoutValue);  // Выполняется после обработки ввода на странице
+    }
+}
+
+// Функция переключения состояния скрипта (включение/отключение)
+function toggleScript() {
+    enabled = !enabled;
+    updateMenu();
+}
+
+// Функция обновления пункта меню
+function updateMenu() {
+    if (commandId) {
+        GM_unregisterMenuCommand(commandId);
+    }
+    const menuText = enabled ? "Отключить очистку текста по Enter" : "Включить очистку текста по Enter";
+    commandId = GM_registerMenuCommand(menuText, toggleScript);
+}
+
+// Инициализация
+document.addEventListener('keyup', clearText, true);
+updateMenu();
+
 // Инициализация скрипта
 function initialize() {
     registerMenuCommands();
     console.log('Initialization complete');
 
     // Инициализация калькулятора
-    const savedData = loadFromLocalStorage();
-    if (savedData) {
-        rateConfigurations = savedData;
-        console.log("Данные rateConfigurations загружены из локального хранилища при запуске:", rateConfigurations);
-    } else {
-        loadRateConfigurations();
-    }
+    loadRateConfigurations(); // Загружаем данные при запуске
 
     // Обновляем данные из JSON каждые 12 часов
     setInterval(loadRateConfigurations, UPDATE_INTERVAL);
