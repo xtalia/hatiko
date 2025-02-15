@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.5
+// @version      2.1.6
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -100,50 +100,66 @@ function createPriceCheckWindow() {
                 </div>
                 <button id="calculatorApplyDiscountButton" style="width: 100%; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Применить скидку</button>
             </div>
-            <div id="tradeInCalculator" style="display: none; margin-top: 10px;">
-                <div style="margin-bottom: 10px;">
-                    <select id="tradeInModelSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <select id="tradeInMemorySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <select id="tradeInBatterySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-                        <option value="90">90%+</option>
-                        <option value="85">85-90%</option>
-                        <option value="0">менее 85%</option>
-                    </select>
-                </div>
-                <div style="margin-bottom: 10px;">
-    <label>Комплектация:</label>
-    <select id="tradeInDeviceConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-        <option value="device_only">Только устройство</option>
-        <option value="device_box">Устройство и коробка</option>
-        <option value="full">Полный комплект</option>
-    </select>
+<div id="tradeInCalculator" style="display: none; margin-top: 10px;">
+    <div style="margin-bottom: 10px;">
+        <select id="tradeInModelSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <select id="tradeInMemorySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;"></select>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <select id="tradeInBatterySelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            <option value="90">90%+</option>
+            <option value="85">85-90%</option>
+            <option value="0">менее 85%</option>
+        </select>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label>Комплектация:</label>
+        <select id="tradeInDeviceConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            <option value="device_only">Только устройство</option>
+            <option value="device_box">Устройство и коробка</option>
+            <option value="full">Полный комплект</option>
+        </select>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label>Состояние корпуса:</label>
+        <select id="tradeInBackCoverConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            <option value="excellent">В порядке</option>
+            <option value="medium">Мелкие царапины</option>
+            <option value="low">Глубокие царапины</option>
+        </select>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label>Состояние экрана:</label>
+        <select id="tradeInScreenConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            <option value="excellent">В порядке</option>
+            <option value="medium">Мелкие царапины</option>
+            <option value="low">Глубокие царапины</option>
+        </select>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <select id="tradeInConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            <option value="excellent">Отлично</option>
+            <option value="good">Хорошо</option>
+            <option value="average">Среднее</option>
+            <option value="poor">Плохое</option>
+        </select>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label><input type="checkbox" id="backCoverCheck"> Замена крышки</label>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label><input type="checkbox" id="screenCheck"> Замена дисплея</label>
+    </div>
+    <div style="margin-bottom: 10px;">
+        <textarea id="tradeInResult" style="width: 100%; height: 100px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
+    </div>
+    <div style="display: flex; gap: 5px;">
+        <button id="tradeInCalculateButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Рассчитать</button>
+        <button id="tradeInCloseButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">Закрыть</button>
+    </div>
 </div>
-                <div style="margin-bottom: 10px;">
-                    <select id="tradeInConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-                        <option value="excellent">Отлично</option>
-                        <option value="good">Хорошо</option>
-                        <option value="average">Среднее</option>
-                        <option value="poor">Плохое</option>
-                    </select>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <label><input type="checkbox" id="backCoverCheck"> Замена крышки</label>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <label><input type="checkbox" id="screenCheck"> Замена дисплея</label>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <textarea id="tradeInResult" style="width: 100%; height: 100px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
-                </div>
-                <div style="display: flex; gap: 5px;">
-                    <button id="tradeInCalculateButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Рассчитать</button>
-                    <button id="tradeInCloseButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">Закрыть</button>
-                </div>
-            </div>
             <div id="clearTextAndTimeoutWindow" style="display: none; margin-top: 10px;">
                 <label style="display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="clearTextCheckbox"> Очищать текст после Enter
@@ -571,7 +587,9 @@ function calculateTradeIn(data) {
     const model = document.getElementById('tradeInModelSelect').value;
     const memory = document.getElementById('tradeInMemorySelect').value;
     const battery = document.getElementById('tradeInBatterySelect').value;
-    const deviceCondition = document.getElementById('tradeInDeviceConditionSelect').value; // Новый параметр
+    const deviceCondition = document.getElementById('tradeInDeviceConditionSelect').value;
+    const backCoverCondition = document.getElementById('tradeInBackCoverConditionSelect').value; // Новый параметр
+    const screenCondition = document.getElementById('tradeInScreenConditionSelect').value; // Новый параметр
     const backCover = document.getElementById('backCoverCheck').checked;
     const screen = document.getElementById('screenCheck').checked;
     const condition = document.getElementById('tradeInConditionSelect').value;
@@ -605,6 +623,20 @@ function calculateTradeIn(data) {
         price -= price < 20000 ? 3000 : 2000;
     }
 
+    // Корректировка цены в зависимости от состояния корпуса
+    if (backCoverCondition === 'medium') {
+        price += parseInt(modelData.back_cover_cond_medium, 10);
+    } else if (backCoverCondition === 'low') {
+        price += parseInt(modelData.back_cover_cond_low, 10);
+    }
+
+    // Корректировка цены в зависимости от состояния экрана
+    if (screenCondition === 'medium') {
+        price += parseInt(modelData.scr_cond_medium, 10);
+    } else if (screenCondition === 'low') {
+        price += parseInt(modelData.scr_cond_low, 10);
+    }
+
     // Учет замены крышки
     if (backCover) {
         price += parseInt(modelData.back_cover_replacement, 10);
@@ -627,6 +659,8 @@ function calculateTradeIn(data) {
 📱 Модель: ${model} (${memory} GB)
 🔋 Батарея: ${battery === '90' ? '90%+' : battery === '85' ? '85-90%' : 'менее 85%'}
 📦 Комплект: ${deviceCondition === 'device_only' ? 'Только устройство' : deviceCondition === 'device_box' ? 'Устройство и коробка' : 'Полный комплект'}
+🏷️ Состояние корпуса: ${backCoverCondition === 'excellent' ? 'В порядке' : backCoverCondition === 'medium' ? 'Мелкие царапины' : 'Глубокие царапины'}
+🖥️ Состояние экрана: ${screenCondition === 'excellent' ? 'В порядке' : screenCondition === 'medium' ? 'Мелкие царапины' : 'Глубокие царапины'}
 ${backCoverStatus}
 ${screenStatus}
 ${conditionEmoji} Состояние: ${condition === 'excellent' ? 'Отличное' : condition === 'good' ? 'Хорошее' : condition === 'average' ? 'Среднее' : 'Плохое'}
