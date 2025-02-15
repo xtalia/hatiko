@@ -80,6 +80,7 @@ def load():
             if model not in data:
                 data[model] = []
             record = {
+                'memory': "0",
                 'ideal_price': row[2],
                 'screen_replacement': row[3],
                 'battery_replacement': row[4],
