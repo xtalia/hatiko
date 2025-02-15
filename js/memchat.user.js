@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.6
+// @version      2.1.7
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -136,14 +136,6 @@ function createPriceCheckWindow() {
             <option value="excellent">В порядке</option>
             <option value="medium">Мелкие царапины</option>
             <option value="low">Глубокие царапины</option>
-        </select>
-    </div>
-    <div style="margin-bottom: 10px;">
-        <select id="tradeInConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-            <option value="excellent">Отлично</option>
-            <option value="good">Хорошо</option>
-            <option value="average">Среднее</option>
-            <option value="poor">Плохое</option>
         </select>
     </div>
     <div style="margin-bottom: 10px;">
@@ -332,7 +324,7 @@ function resetTextareaHeight() {
 
 // Функция для принудительного обновления цен
 function forceUpdate() {
-    const url = `http://${SUPERSERVER}/memchat?force=true`;
+    const url = `http://${SUPERSERVER}/load_tn?force=true`;
     fetchServerData(
         url,
         () => alert('Принудительное обновление выполнено успешно!'),
@@ -588,11 +580,10 @@ function calculateTradeIn(data) {
     const memory = document.getElementById('tradeInMemorySelect').value;
     const battery = document.getElementById('tradeInBatterySelect').value;
     const deviceCondition = document.getElementById('tradeInDeviceConditionSelect').value;
-    const backCoverCondition = document.getElementById('tradeInBackCoverConditionSelect').value; // Новый параметр
-    const screenCondition = document.getElementById('tradeInScreenConditionSelect').value; // Новый параметр
+    const backCoverCondition = document.getElementById('tradeInBackCoverConditionSelect').value;
+    const screenCondition = document.getElementById('tradeInScreenConditionSelect').value;
     const backCover = document.getElementById('backCoverCheck').checked;
     const screen = document.getElementById('screenCheck').checked;
-    const condition = document.getElementById('tradeInConditionSelect').value;
 
     const modelData = data[model].find(item => item.memory === memory);
     if (!modelData) {
@@ -614,13 +605,6 @@ function calculateTradeIn(data) {
         price += parseInt(modelData.device_only, 10);
     } else if (deviceCondition === 'device_box') {
         price += parseInt(modelData.device_box, 10);
-    }
-
-    // Корректировка цены в зависимости от состояния устройства
-    if (condition === 'average') {
-        price -= price < 20000 ? 2000 : 1000;
-    } else if (condition === 'poor') {
-        price -= price < 20000 ? 3000 : 2000;
     }
 
     // Корректировка цены в зависимости от состояния корпуса
@@ -651,10 +635,6 @@ function calculateTradeIn(data) {
     const backCoverStatus = backCover ? '🔧 Требуется замена крышки' : '✅ Крышка в порядке';
     const screenStatus = screen ? '🔧 Требуется замена дисплея' : '✅ Дисплей в порядке';
 
-    const conditionEmoji = condition === 'excellent' ? '😎' :
-                          condition === 'good' ? '😀' :
-                          condition === 'average' ? '😐' : '😢';
-
     const result = `
 📱 Модель: ${model} (${memory} GB)
 🔋 Батарея: ${battery === '90' ? '90%+' : battery === '85' ? '85-90%' : 'менее 85%'}
@@ -663,7 +643,6 @@ function calculateTradeIn(data) {
 🖥️ Состояние экрана: ${screenCondition === 'excellent' ? 'В порядке' : screenCondition === 'medium' ? 'Мелкие царапины' : 'Глубокие царапины'}
 ${backCoverStatus}
 ${screenStatus}
-${conditionEmoji} Состояние: ${condition === 'excellent' ? 'Отличное' : condition === 'good' ? 'Хорошее' : condition === 'average' ? 'Среднее' : 'Плохое'}
 
 💰 Предварительная цена: ${price} рублей
 
@@ -713,11 +692,8 @@ function initialize() {
 // Регистрация команд меню
 function registerMenuCommands() {
     GM_registerMenuCommand('Раскрыть всю карточку товара', showAllTabContents, 'S');
-    GM_registerMenuCommand('Проверка цен', createPriceCheckWindow);
-    GM_registerMenuCommand('Обновить принудительно цены', forceUpdate);
-    GM_registerMenuCommand('Показать кто работает сегодня', () => fetchWhoWorks('today'));
-    GM_registerMenuCommand('Показать кто работает завтра', () => fetchWhoWorks('tomorrow'));
-    GM_registerMenuCommand('Оценка Trade-In', toggleTradeInCalculator);
+    GM_registerMenuCommand('Открыть мемный чат', createPriceCheckWindow);
+    GM_registerMenuCommand('Обновить принудительно цены TradeIn', forceUpdate);
 }
 
 window.addEventListener('load', () => {
