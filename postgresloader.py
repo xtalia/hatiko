@@ -28,6 +28,7 @@ cities = {
 
 
 def get_db_connection():
+    pass
     return psycopg2.connect(
         host=DB_HOST,
         database=DB,
@@ -36,6 +37,7 @@ def get_db_connection():
     )
 
 def load_cache():
+    pass
     global cache, last_updated
     try:
         with open(cache_file, 'r') as f:
