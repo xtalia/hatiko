@@ -148,28 +148,29 @@ def format_response(item):
     return template.strip()
 
 def handle_query(query):
-    try:
-        update_cache()
-    except Exception as e:
-        if isinstance(query, int):
-            print(f"Error updating cache: {e}")
-            return f"Server error: {e}. Try again later."
-        else:
-            return "Server error, send the request as a number and contact Ivan."
+    send_data(query)
+    # try:
+    #     update_cache()
+    # except Exception as e:
+    #     if isinstance(query, int):
+    #         print(f"Error updating cache: {e}")
+    #         return f"Server error: {e}. Try again later."
+    #     else:
+    #         return "Server error, send the request as a number and contact Ivan."
 
-    if isinstance(query, str) and not query.isdigit():
-        results = search_cache(query)
-        if not results:
-            return "No data found"
-        return "\n\n".join([format_response(item) for item in results])
-    elif query.isdigit():
-        result = search_cache(int(query))
-        if result:
-            return format_response(result)
-        else:
-            return "No data found"
-    else:
-        return "Invalid query"
+    # if isinstance(query, str) and not query.isdigit():
+    #     results = search_cache(query)
+    #     if not results:
+    #         return "No data found"
+    #     return "\n\n".join([format_response(item) for item in results])
+    # elif query.isdigit():
+    #     result = search_cache(int(query))
+    #     if result:
+    #         return format_response(result)
+    #     else:
+    #         return "No data found"
+    # else:
+    #     return "Invalid query"
 
 def send_data(message):
     search_query = message # получаем текст сообщения от пользователя
