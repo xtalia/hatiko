@@ -129,7 +129,7 @@ def load():
     json_data = json.dumps(data, indent=4, ensure_ascii=False)
 
     # Выводим JSON-строку на экран
-    print(json_data)
+    # print(json_data)
 
     # Сохраняем JSON-строку в файл
     with open('data.json', 'w', encoding='utf-8') as f:
