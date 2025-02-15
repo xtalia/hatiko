@@ -59,7 +59,7 @@ def memchat():
         return answer
         
     query = unquote(request.args.get('query', ''))
-    answer = handle_query(query)
+    answer = send_data(query)
     return answer
 
 
