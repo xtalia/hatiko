@@ -148,7 +148,7 @@ def format_response(item):
     return template.strip()
 
 def handle_query(query):
-    send_data(query)
+    return send_data(query)
     # try:
     #     update_cache()
     # except Exception as e:
