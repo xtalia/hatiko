@@ -220,26 +220,32 @@ def handle_config_file(message):
 @bot.message_handler(content_types=['text'])
 def handle_message(message):
     chat_id = message.chat.id
-    if any(trigger.lower() in message.text.lower() for trigger in config.SITE_TRIGGERS):
-        bot.send_message(chat_id, "Ищу информацию на сайте Хатико")
-        result = send_data(message.text)
-        bot.send_message(chat_id, result)
-        return
 
-    if str(message.from_user.id) in config.GRANTED:
-        search_query = message.text
-        result = handle_query(search_query)
+    bot.send_message(chat_id, "Ищу информацию на сайте Хатико")
+    result = send_data(message.text)
+    bot.send_message(chat_id, result)
+    
+    
+    # if any(trigger.lower() in message.text.lower() for trigger in config.SITE_TRIGGERS):
+    
+    
+    
+    
+    # if str(message.from_user.id) in config.GRANTED:
+    #     search_query = message.text
+        
+    #     result = handle_query(search_query)
 
-        if result:
-            parts = result.split("Отдаем? Сможете привезти?")
+    #     if result:
+    #         parts = result.split("Отдаем? Сможете привезти?")
 
-            for part in parts:
-                if part.strip():  # Убедимся, что часть не пустая
-                    bot.send_message(chat_id, part.strip() + "\nОтдаем? Сможете привезти?")
-        else:
-            bot.send_message(chat_id, "Ошибка")
-    else:
-        bot.send_message(chat_id, f"В доступе отказано. Сообщите ваш ID {message.from_user.id} Сергею, чтобы он вас добавил")
+    #         for part in parts:
+    #             if part.strip():  # Убедимся, что часть не пустая
+    #                 bot.send_message(chat_id, part.strip() + "\nОтдаем? Сможете привезти?")
+    #     else:
+    #         bot.send_message(chat_id, "Ошибка")
+    # else:
+    #     bot.send_message(chat_id, f"В доступе отказано. Сообщите ваш ID {message.from_user.id} Сергею, чтобы он вас добавил")
 
 if __name__ == '__main__':
 
