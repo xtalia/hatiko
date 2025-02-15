@@ -591,44 +591,47 @@ function calculateTradeIn(data) {
         return;
     }
 
-    let price = parseInt(modelData.ideal_price, 10);
+    // Функция для безопасного преобразования строки в число (пустые строки считаются как 0)
+    const safeParseInt = (value) => value === "" ? 0 : parseInt(value, 10);
+
+    let price = safeParseInt(modelData.ideal_price);
 
     // Корректировка цены в зависимости от состояния батареи
     if (battery === '0') {
-        price += parseInt(modelData.battery_replacement, 10);
+        price += safeParseInt(modelData.battery_replacement);
     } else if (battery === '85') {
-        price += parseInt(modelData.battery_wear, 10);
+        price += safeParseInt(modelData.battery_wear);
     }
 
     // Корректировка цены в зависимости от комплектации
     if (deviceCondition === 'device_only') {
-        price += parseInt(modelData.device_only, 10);
+        price += safeParseInt(modelData.device_only);
     } else if (deviceCondition === 'device_box') {
-        price += parseInt(modelData.device_box, 10);
+        price += safeParseInt(modelData.device_box);
     }
 
     // Корректировка цены в зависимости от состояния корпуса
     if (backCoverCondition === 'medium') {
-        price += parseInt(modelData.back_cover_cond_medium, 10);
+        price += safeParseInt(modelData.back_cover_cond_medium);
     } else if (backCoverCondition === 'low') {
-        price += parseInt(modelData.back_cover_cond_low, 10);
+        price += safeParseInt(modelData.back_cover_cond_low);
     }
 
     // Корректировка цены в зависимости от состояния экрана
     if (screenCondition === 'medium') {
-        price += parseInt(modelData.scr_cond_medium, 10);
+        price += safeParseInt(modelData.scr_cond_medium);
     } else if (screenCondition === 'low') {
-        price += parseInt(modelData.scr_cond_low, 10);
+        price += safeParseInt(modelData.scr_cond_low);
     }
 
     // Учет замены крышки
     if (backCover) {
-        price += parseInt(modelData.back_cover_replacement, 10);
+        price += safeParseInt(modelData.back_cover_replacement);
     }
 
     // Учет замены дисплея
     if (screen) {
-        price += parseInt(modelData.screen_replacement, 10);
+        price += safeParseInt(modelData.screen_replacement);
     }
 
     // Статус крышки и дисплея
