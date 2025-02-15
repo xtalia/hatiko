@@ -44,6 +44,7 @@ def load():
                 'battery_replacement': row[5],
                 'device_only': row[6],
                 'device_box': row[7],
+                'back_cover_replacement':row[8],
                 'scr_cond_medium': row[9],
                 'scr_cond_low': row[10],
                 'back_cover_cond_medium': row[11],
@@ -111,6 +112,7 @@ def load():
                 'scr_cond_low': row[8],
                 'back_cover_cond_medium': row[9],
                 'back_cover_cond_low': row[10],
+                'back_cover_replacement':"-99999",
             }
             data[model].append(record)
 
