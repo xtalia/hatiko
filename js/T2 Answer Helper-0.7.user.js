@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.7.1
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
-// @match        https://*.tele2.ru/*
+// @match        https://*.t2.ru/*
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // ==/UserScript==
@@ -167,7 +167,7 @@
                 throw new Error('Некорректная ссылка');
             }
 
-            const apiUrl = `https://abc.tele2.ru/qti_return.html?atl=${atl}&code=${code}&charset=utf-8`;
+            const apiUrl = `https://abc.t2.ru/qti_return.html?atl=${atl}&code=${code}&charset=utf-8`;
             const response = await fetch(apiUrl);
             const xml = await response.text();
 
