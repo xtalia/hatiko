@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.3
+// @version      0.7.4
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
 // @match        https://*.t2.ru/*
@@ -206,47 +206,58 @@
     
         const correctAnswers = currentQuestion.correctTexts;
     
-        // Ищем все возможные элементы с ответами в основном контейнере теста
-        const answerElements = document.querySelectorAll('div[wtq-block="body"] [wtq-elem="answer-text"], div[wtq-block="body"] .answer-text');
-        
-        answerElements.forEach(el => {
-            const text = el.textContent.trim();
-            if (correctAnswers.some(correct => text.includes(correct))) {
-                el.style.backgroundColor = 'lightgreen';
-            } else {
-                el.style.backgroundColor = '';
-            }
+        // Сначала сбрасываем предыдущую подсветку
+        document.querySelectorAll('.highlighted-answer').forEach(el => {
+            el.classList.remove('highlighted-answer');
+            el.style.backgroundColor = '';
         });
+    
+        // Ищем текст в основном контейнере вопроса
+        const questionContainer = document.querySelector('.wtq-item-text-table');
+        if (!questionContainer) return;
+    
+        // Ищем все текстовые элементы в основном контейнере
+        const textElements = questionContainer.querySelectorAll('.wtq-item-text-cell-main, .wtq-item-text-cell-left, .wtq-item-text-cell-right');
+    
+        textElements.forEach(el => {
+            const text = el.textContent.trim();
+            correctAnswers.forEach(correct => {
+                if (text.includes(correct)) {
+                    // Подсвечиваем весь элемент
+                    el.style.backgroundColor = 'lightgreen';
+                    el.classList.add('highlighted-answer');
+                    
+                    // Или альтернативно - подсвечиваем только совпадающий текст
+                    const html = el.innerHTML;
+                    const highlighted = html.replace(
+                        new RegExp(escapeRegExp(correct), 'g'), 
+                        `<span class="highlighted-answer" style="background-color: lightgreen;">${correct}</span>`
+                    );
+                    el.innerHTML = highlighted;
+                }
+            });
+        });
+    }
+    
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     // Функция для проверки номера вопроса на странице
     async function checkForQuestionNumber() {
-        // Ищем элемент с текстом вопроса в любом месте страницы
-        const questionElements = document.querySelectorAll('div[wtq-block="body"] *');
-        let found = false;
+        // Ищем элемент с номером вопроса
+        const questionNumberElement = document.querySelector('span.wtq-q-number-current');
         
-        // Используем обычный цикл for вместо forEach для await
-        for (let i = 0; i < questionElements.length; i++) {
-            const el = questionElements[i];
-            const match = el.innerText.match(/Вопрос\s+(\d+)\s+из\s+(\d+)/);
-            if (match && !found) {
-                found = true;
+        if (questionNumberElement) {
+            const match = questionNumberElement.innerText.match(/Вопрос\s+(\d+)/);
+            if (match) {
                 const questionNumber = Number(match[1]);
-                const total = Number(match[2]);
-                
-                if (totalQuestions !== total) {
-                    totalQuestions = total;
-                    questionSlider.max = totalQuestions.toString();
-                    questionNumberInput.max = totalQuestions.toString();
-                }
-                
                 updateQuestion(questionNumber);
     
                 if (answersCache.length === 0 && inputLink.value) {
-                    await fetchAndCacheAnswers(inputLink.value); // Теперь await работает корректно
+                    await fetchAndCacheAnswers(inputLink.value);
                 }
                 highlightCorrectAnswers();
-                break; // Прерываем цикл после нахождения первого совпадения
             }
         }
         
