@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.2
+// @version      0.7.3
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
 // @match        https://*.t2.ru/*
@@ -225,7 +225,9 @@
         const questionElements = document.querySelectorAll('div[wtq-block="body"] *');
         let found = false;
         
-        questionElements.forEach(el => {
+        // Используем обычный цикл for вместо forEach для await
+        for (let i = 0; i < questionElements.length; i++) {
+            const el = questionElements[i];
             const match = el.innerText.match(/Вопрос\s+(\d+)\s+из\s+(\d+)/);
             if (match && !found) {
                 found = true;
@@ -241,11 +243,12 @@
                 updateQuestion(questionNumber);
     
                 if (answersCache.length === 0 && inputLink.value) {
-                    await fetchAndCacheAnswers(inputLink.value);
+                    await fetchAndCacheAnswers(inputLink.value); // Теперь await работает корректно
                 }
                 highlightCorrectAnswers();
+                break; // Прерываем цикл после нахождения первого совпадения
             }
-        });
+        }
         
         setTimeout(checkForQuestionNumber, 1000);
     }
