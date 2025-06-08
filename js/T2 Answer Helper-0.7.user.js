@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.9
+// @version      0.7.91
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
 // @match        https://*.t2.ru/*
@@ -12,6 +12,16 @@
 (function() {
     'use strict';
 
+    // Переменные для перетаскивания
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    // Основные переменные
+    let currentQuestionIndex = 1;
+    let totalQuestions = 15;
+    let answersCache = [];
+
     // Стили для подсветки
     GM_addStyle(`
         .t2-answer-highlight {
@@ -19,11 +29,14 @@
             padding: 2px;
             border-radius: 3px;
         }
+        #answerHelper {
+            cursor: default;
+            user-select: none;
+        }
+        #answerHelper h3 {
+            cursor: move;
+        }
     `);
-
-    let currentQuestionIndex = 1;
-    let totalQuestions = 15;
-    let answersCache = [];
 
     // Создаем плавающее окно
     const floatDiv = document.createElement('div');
@@ -31,7 +44,7 @@
     floatDiv.style.position = 'fixed';
     floatDiv.style.bottom = '10px';
     floatDiv.style.right = '10px';
-    floatDiv.style.width = '300px';
+    floatDiv.style.width = '350px';
     floatDiv.style.backgroundColor = 'white';
     floatDiv.style.border = '1px solid #ccc';
     floatDiv.style.padding = '10px';
@@ -39,11 +52,35 @@
     floatDiv.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.1)';
     document.body.appendChild(floatDiv);
 
-    // Заголовок
+    // Заголовок (для перетаскивания)
     const title = document.createElement('h3');
     title.innerText = 'Помощник ответов T2';
     title.style.margin = '0 0 10px 0';
+    title.style.paddingBottom = '5px';
+    title.style.borderBottom = '1px solid #eee';
     floatDiv.appendChild(title);
+
+    // Обработчики перетаскивания
+    title.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        dragOffsetX = e.clientX - floatDiv.getBoundingClientRect().left;
+        dragOffsetY = e.clientY - floatDiv.getBoundingClientRect().top;
+        floatDiv.style.cursor = 'grabbing';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (isDragging) {
+            floatDiv.style.left = (e.clientX - dragOffsetX) + 'px';
+            floatDiv.style.top = (e.clientY - dragOffsetY) + 'px';
+            floatDiv.style.bottom = 'auto';
+            floatDiv.style.right = 'auto';
+        }
+    });
+
+    document.addEventListener('mouseup', function() {
+        isDragging = false;
+        floatDiv.style.cursor = 'default';
+    });
 
     // Поле для ввода ссылки
     const inputLink = document.createElement('input');
@@ -51,11 +88,13 @@
     inputLink.placeholder = 'Вставьте ссылку на тест';
     inputLink.style.width = '100%';
     inputLink.style.marginBottom = '10px';
+    inputLink.style.padding = '5px';
     floatDiv.appendChild(inputLink);
 
     // Блок управления вопросом
     const questionControl = document.createElement('div');
     questionControl.style.display = 'flex';
+    questionControl.style.alignItems = 'center';
     questionControl.style.marginBottom = '10px';
     floatDiv.appendChild(questionControl);
 
@@ -67,6 +106,7 @@
     questionNumberInput.value = currentQuestionIndex.toString();
     questionNumberInput.style.width = '50px';
     questionNumberInput.style.marginRight = '10px';
+    questionNumberInput.style.padding = '5px';
     questionNumberInput.onchange = function() {
         updateQuestion(Number(this.value));
     };
@@ -89,10 +129,21 @@
     getAnswersButton.innerText = 'Загрузить ответы';
     getAnswersButton.style.width = '100%';
     getAnswersButton.style.marginBottom = '10px';
+    getAnswersButton.style.padding = '5px';
     getAnswersButton.onclick = async () => {
         await loadAndHighlightAnswers();
     };
     floatDiv.appendChild(getAnswersButton);
+
+    // Текстовое поле для вывода ответов
+    const resultField = document.createElement('textarea');
+    resultField.id = 'resultField';
+    resultField.style.width = '100%';
+    resultField.style.height = '150px';
+    resultField.style.marginBottom = '10px';
+    resultField.style.padding = '5px';
+    resultField.readOnly = true;
+    floatDiv.appendChild(resultField);
 
     // Информационное поле
     const infoField = document.createElement('div');
@@ -113,9 +164,10 @@
             showInfo('Загрузка ответов...');
             await fetchAndCacheAnswers(link);
             highlightAnswers();
-            showInfo(`Загружено ${answersCache.length} вопросов`);
+            updateResultField();
+            showInfo(`Загружено ${answersCache.length} вопросов. Текущий вопрос: ${currentQuestionIndex}`);
         } catch (error) {
-            showInfo('Ошибка загрузки ответов');
+            showInfo('Ошибка загрузки ответов: ' + error.message);
             console.error(error);
         }
     }
@@ -131,6 +183,8 @@
         
         if (answersCache.length > 0) {
             highlightAnswers();
+            updateResultField();
+            showInfo(`Текущий вопрос: ${currentQuestionIndex}`);
         }
     }
 
@@ -180,17 +234,47 @@
         const correctAnswers = answersCache[currentQuestionIndex - 1].correctTexts;
         if (correctAnswers.length === 0) return;
 
-        // Ищем все текстовые элементы на странице
-        const allTextElements = document.querySelectorAll('body *');
-        
+        // Ищем все элементы с текстом на странице
+        const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+        );
+
+        const textNodes = [];
+        let node;
+        while (node = walker.nextNode()) {
+            if (node.nodeValue.trim() !== '') {
+                textNodes.push(node);
+            }
+        }
+
         correctAnswers.forEach(answer => {
-            allTextElements.forEach(element => {
-                if (element.children.length === 0 && element.textContent.includes(answer)) {
-                    // Подсвечиваем элемент, содержащий ответ
-                    element.classList.add('t2-answer-highlight');
+            textNodes.forEach(textNode => {
+                if (textNode.nodeValue.includes(answer)) {
+                    const parent = textNode.parentNode;
+                    if (parent.nodeName !== 'SCRIPT' && parent.nodeName !== 'STYLE') {
+                        const span = document.createElement('span');
+                        span.className = 't2-answer-highlight';
+                        parent.replaceChild(span, textNode);
+                        span.appendChild(textNode);
+                    }
                 }
             });
         });
+    }
+
+    // Функция обновления текстового поля с ответами
+    function updateResultField() {
+        if (!answersCache[currentQuestionIndex - 1]) {
+            resultField.value = 'Ответы не загружены';
+            return;
+        }
+
+        const question = answersCache[currentQuestionIndex - 1];
+        resultField.value = `Вопрос ${currentQuestionIndex}:\n${question.title}\n\n` +
+                          `Правильные ответы:\n${question.correctTexts.map(t => `• ${t}`).join('\n')}`;
     }
 
     // Вспомогательная функция для отображения информации
