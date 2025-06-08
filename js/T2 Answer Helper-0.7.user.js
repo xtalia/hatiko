@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.5
+// @version      0.7.9
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
 // @match        https://*.t2.ru/*
@@ -12,9 +12,15 @@
 (function() {
     'use strict';
 
-    let isDragging = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
+    // Стили для подсветки
+    GM_addStyle(`
+        .t2-answer-highlight {
+            background-color: #add8e6 !important;
+            padding: 2px;
+            border-radius: 3px;
+        }
+    `);
+
     let currentQuestionIndex = 1;
     let totalQuestions = 15;
     let answersCache = [];
@@ -33,252 +39,167 @@
     floatDiv.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.1)';
     document.body.appendChild(floatDiv);
 
-    // Заголовок (используется для перетаскивания)
+    // Заголовок
     const title = document.createElement('h3');
-    title.innerText = 'Помощник';
+    title.innerText = 'Помощник ответов T2';
     title.style.margin = '0 0 10px 0';
-    title.style.cursor = 'move';
     floatDiv.appendChild(title);
 
-    // Добавляем обработчики для перетаскивания
-    title.onmousedown = function(e) {
-        isDragging = true;
-        dragOffsetX = e.clientX - floatDiv.getBoundingClientRect().left;
-        dragOffsetY = e.clientY - floatDiv.getBoundingClientRect().top;
-    };
-
-    document.onmousemove = function(e) {
-        if (isDragging) {
-            floatDiv.style.left = `${e.clientX - dragOffsetX}px`;
-            floatDiv.style.top = `${e.clientY - dragOffsetY}px`;
-            floatDiv.style.bottom = 'auto';
-            floatDiv.style.right = 'auto';
-        }
-    };
-
-    document.onmouseup = function() {
-        isDragging = false;
-    };
-
-    // Кнопка закрыть
-    const closeButton = document.createElement('button');
-    closeButton.innerText = 'Закрыть';
-    closeButton.style.float = 'right';
-    closeButton.onclick = () => {
-        floatDiv.style.display = 'none';
-    };
-    floatDiv.appendChild(closeButton);
-
-    // Текстовое поле для ввода ссылки
+    // Поле для ввода ссылки
     const inputLink = document.createElement('input');
     inputLink.type = 'text';
-    inputLink.placeholder = 'Вставьте ссылку';
+    inputLink.placeholder = 'Вставьте ссылку на тест';
     inputLink.style.width = '100%';
     inputLink.style.marginBottom = '10px';
-    inputLink.oninput = function() {
-        if (inputLink.value) {
-            checkForQuestionNumber();
-        }
-    };
     floatDiv.appendChild(inputLink);
 
-    // Поле для ввода номера вопроса
+    // Блок управления вопросом
+    const questionControl = document.createElement('div');
+    questionControl.style.display = 'flex';
+    questionControl.style.marginBottom = '10px';
+    floatDiv.appendChild(questionControl);
+
+    // Поле номера вопроса
     const questionNumberInput = document.createElement('input');
     questionNumberInput.type = 'number';
     questionNumberInput.min = '1';
     questionNumberInput.max = totalQuestions.toString();
     questionNumberInput.value = currentQuestionIndex.toString();
-    questionNumberInput.style.width = '100%';
-    questionNumberInput.style.marginBottom = '10px';
-    questionNumberInput.oninput = function() {
-        updateQuestion(Number(questionNumberInput.value));
+    questionNumberInput.style.width = '50px';
+    questionNumberInput.style.marginRight = '10px';
+    questionNumberInput.onchange = function() {
+        updateQuestion(Number(this.value));
     };
-    floatDiv.appendChild(questionNumberInput);
+    questionControl.appendChild(questionNumberInput);
 
-    // Слайдер для выбора номера вопроса
+    // Слайдер вопроса
     const questionSlider = document.createElement('input');
     questionSlider.type = 'range';
     questionSlider.min = '1';
     questionSlider.max = totalQuestions.toString();
     questionSlider.value = currentQuestionIndex.toString();
-    questionSlider.style.width = '100%';
-    questionSlider.style.marginBottom = '10px';
+    questionSlider.style.flex = '1';
     questionSlider.oninput = function() {
-        updateQuestion(Number(questionSlider.value));
+        updateQuestion(Number(this.value));
     };
-    floatDiv.appendChild(questionSlider);
+    questionControl.appendChild(questionSlider);
 
     // Кнопка "Ответы"
     const getAnswersButton = document.createElement('button');
-    getAnswersButton.innerText = 'Ответы';
+    getAnswersButton.innerText = 'Загрузить ответы';
     getAnswersButton.style.width = '100%';
+    getAnswersButton.style.marginBottom = '10px';
     getAnswersButton.onclick = async () => {
-        const link = inputLink.value;
-        if (!link) {
-            alert('Пожалуйста, вставьте ссылку');
-            return;
-        }
-    
-        try {
-            await fetchAndCacheAnswers(link);
-            displayQuestion(answersCache[currentQuestionIndex - 1]);
-            // Добавляем задержку перед подсветкой
-            setTimeout(highlightCorrectAnswers, 300);
-        } catch (error) {
-            alert('Ошибка при получении ответов');
-        }
+        await loadAndHighlightAnswers();
     };
     floatDiv.appendChild(getAnswersButton);
 
-    // Текстовое поле для вывода результатов
-    const resultField = document.createElement('textarea');
-    resultField.id = 'resultField';
-    resultField.style.width = '100%';
-    resultField.style.height = '150px';
-    resultField.style.marginTop = '10px';
-    floatDiv.appendChild(resultField);
+    // Информационное поле
+    const infoField = document.createElement('div');
+    infoField.id = 'infoField';
+    infoField.style.fontSize = '12px';
+    infoField.style.color = '#666';
+    floatDiv.appendChild(infoField);
 
-    // Функция для обновления вопроса
+    // Функция загрузки и подсветки ответов
+    async function loadAndHighlightAnswers() {
+        const link = inputLink.value;
+        if (!link) {
+            showInfo('Введите ссылку на тест');
+            return;
+        }
+
+        try {
+            showInfo('Загрузка ответов...');
+            await fetchAndCacheAnswers(link);
+            highlightAnswers();
+            showInfo(`Загружено ${answersCache.length} вопросов`);
+        } catch (error) {
+            showInfo('Ошибка загрузки ответов');
+            console.error(error);
+        }
+    }
+
+    // Функция обновления вопроса
     function updateQuestion(index) {
+        if (index < 1) index = 1;
+        if (index > totalQuestions) index = totalQuestions;
+        
         currentQuestionIndex = index;
         questionNumberInput.value = index.toString();
         questionSlider.value = index.toString();
         
         if (answersCache.length > 0) {
-            displayQuestion(answersCache[currentQuestionIndex - 1]);
-            // Добавляем небольшую задержку для обновления DOM
-            setTimeout(highlightCorrectAnswers, 300);
+            highlightAnswers();
         }
     }
 
-    // Функция для отображения вопроса и ответов
-    function displayQuestion(question) {
-        if (question) {
-            resultField.value = formatAnswers([question]);
-        } else {
-            resultField.value = 'Вопрос не найден.';
-        }
-    }
-
-    // Функция для получения и кэширования ответов
+    // Функция загрузки ответов
     async function fetchAndCacheAnswers(link) {
-        if (answersCache.length === 0) {
-            const url = new URL(link);
-            const atl = url.searchParams.get('object_id');
-            const code = url.searchParams.get('part_code');
-            if (!atl || !code) {
-                throw new Error('Некорректная ссылка');
-            }
+        const url = new URL(link);
+        const atl = url.searchParams.get('object_id');
+        const code = url.searchParams.get('part_code');
+        
+        if (!atl || !code) {
+            throw new Error('Некорректная ссылка');
+        }
 
-            const apiUrl = `https://abc.t2.ru/qti_return.html?atl=${atl}&code=${code}&charset=utf-8`;
-            const response = await fetch(apiUrl);
-            const xml = await response.text();
+        const apiUrl = `https://abc.t2.ru/qti_return.html?atl=${atl}&code=${code}&charset=utf-8`;
+        const response = await fetch(apiUrl);
+        const xml = await response.text();
 
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xml, 'text/xml');
-            const items = xmlDoc.getElementsByTagName('item');
-            totalQuestions = items.length;
-            questionSlider.max = totalQuestions.toString();
-            questionNumberInput.max = totalQuestions.toString();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xml, 'text/xml');
+        const items = xmlDoc.getElementsByTagName('item');
+        
+        answersCache = [];
+        totalQuestions = items.length;
+        questionSlider.max = totalQuestions.toString();
+        questionNumberInput.max = totalQuestions.toString();
 
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                const title = item.getAttribute('title');
-                const responseLid = item.getElementsByTagName('response_lid')[0];
-                const labels = responseLid.getElementsByTagName('response_label');
-                const correctLabels = Array.from(labels).filter(label => label.getAttribute('ws_right') === '1');
-                const correctTexts = correctLabels.map(label => label.getElementsByTagName('mattext')[0].textContent.trim());
-                answersCache.push({ title, correctTexts });
-            }
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const title = item.getAttribute('title');
+            const responseLid = item.getElementsByTagName('response_lid')[0];
+            const labels = responseLid.getElementsByTagName('response_label');
+            const correctLabels = Array.from(labels).filter(label => label.getAttribute('ws_right') === '1');
+            const correctTexts = correctLabels.map(label => label.getElementsByTagName('mattext')[0].textContent.trim());
+            answersCache.push({ title, correctTexts });
         }
     }
 
-    // Функция для форматирования ответов
-    function formatAnswers(answers) {
-        return answers.map((answer, index) => {
-            return `<${index + 1}> ${answer.title}\n${answer.correctTexts.map(text => `✔️ ${text}`).join('\n')}\n`;
-        }).join('\n');
-    }
-
-    // Функция для подсветки правильных ответов на странице
-    function highlightCorrectAnswers() {
-        if (answersCache.length === 0) return;
-        
-        // Сначала сбрасываем все предыдущие подсветки
-        document.querySelectorAll('.highlighted-answer').forEach(el => {
-            el.style.backgroundColor = '';
-            el.classList.remove('highlighted-answer');
+    // Функция подсветки ответов
+    function highlightAnswers() {
+        // Сначала убираем все предыдущие подсветки
+        document.querySelectorAll('.t2-answer-highlight').forEach(el => {
+            el.classList.remove('t2-answer-highlight');
         });
-    
-        const currentQuestion = answersCache[currentQuestionIndex - 1];
-        if (!currentQuestion) return;
-    
-        // Ждем пока обновится DOM (если контент динамический)
-        setTimeout(() => {
-            const correctAnswers = currentQuestion.correctTexts;
-            const questionContainer = document.querySelector('.wtq-item-text-table');
-            
-            if (!questionContainer) {
-                console.log('Контейнер вопроса не найден');
-                return;
-            }
-    
-            // Ищем все текстовые элементы
-            const textElements = Array.from(questionContainer.querySelectorAll('*'))
-                .filter(el => el.childNodes.length === 1 && el.childNodes[0].nodeType === Node.TEXT_NODE);
-    
-            correctAnswers.forEach(correct => {
-                textElements.forEach(el => {
-                    if (el.textContent.trim().includes(correct)) {
-                        // Подсвечиваем весь элемент
-                        el.style.backgroundColor = 'lightgreen';
-                        el.classList.add('highlighted-answer');
-                        
-                        // Или подсвечиваем только текст (раскомментировать если нужно)
-                        /*
-                        const html = el.innerHTML;
-                        const highlighted = html.replace(
-                            new RegExp(escapeRegExp(correct), 'g'), 
-                            `<span class="highlighted-answer" style="background-color: lightgreen;">${correct}</span>`
-                        );
-                        el.innerHTML = highlighted;
-                        */
-                    }
-                });
-            });
-        }, 100); // Небольшая задержка для динамического контента
-    }
-    
-    function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
 
-    // Функция для проверки номера вопроса на странице
-    async function checkForQuestionNumber() {
-        // Ищем элемент с номером вопроса
-        const questionNumberElement = document.querySelector('span.wtq-q-number-current');
+        if (!answersCache[currentQuestionIndex - 1]) return;
         
-        if (questionNumberElement) {
-            const match = questionNumberElement.innerText.match(/Вопрос\s+(\d+)/);
-            if (match) {
-                const questionNumber = Number(match[1]);
-                updateQuestion(questionNumber);
-    
-                if (answersCache.length === 0 && inputLink.value) {
-                    await fetchAndCacheAnswers(inputLink.value);
+        const correctAnswers = answersCache[currentQuestionIndex - 1].correctTexts;
+        if (correctAnswers.length === 0) return;
+
+        // Ищем все текстовые элементы на странице
+        const allTextElements = document.querySelectorAll('body *');
+        
+        correctAnswers.forEach(answer => {
+            allTextElements.forEach(element => {
+                if (element.children.length === 0 && element.textContent.includes(answer)) {
+                    // Подсвечиваем элемент, содержащий ответ
+                    element.classList.add('t2-answer-highlight');
                 }
-                highlightCorrectAnswers();
-            }
-        }
-        
-        setTimeout(checkForQuestionNumber, 1000);
+            });
+        });
     }
 
-    // Добавление кнопки для повторного открытия окна
-    GM_registerMenuCommand('Открыть помощник', () => {
+    // Вспомогательная функция для отображения информации
+    function showInfo(message) {
+        infoField.textContent = message;
+    }
+
+    // Кнопка для повторного открытия окна
+    GM_registerMenuCommand('Открыть помощник ответов', () => {
         floatDiv.style.display = 'block';
     });
-
-    // Инициализация периодической проверки
-    checkForQuestionNumber();
 })();
