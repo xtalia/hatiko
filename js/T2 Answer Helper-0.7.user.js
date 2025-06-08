@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.1
+// @version      0.7.2
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
 // @match        https://*.t2.ru/*
@@ -200,47 +200,54 @@
     // Функция для подсветки правильных ответов на странице
     function highlightCorrectAnswers() {
         if (answersCache.length === 0) return;
-
+    
         const currentQuestion = answersCache[currentQuestionIndex - 1];
         if (!currentQuestion) return;
-
+    
         const correctAnswers = currentQuestion.correctTexts;
-
-        // Поиск всех элементов с текстами ответов
-        const answerElements = document.querySelectorAll('td.wsqti_item_multiple_texttd, td.wsqti_item_single_texttd, td[id*="ws_item_var_text"]');
-
+    
+        // Ищем все возможные элементы с ответами в основном контейнере теста
+        const answerElements = document.querySelectorAll('div[wtq-block="body"] [wtq-elem="answer-text"], div[wtq-block="body"] .answer-text');
+        
         answerElements.forEach(el => {
             const text = el.textContent.trim();
-            if (correctAnswers.includes(text)) {
+            if (correctAnswers.some(correct => text.includes(correct))) {
                 el.style.backgroundColor = 'lightgreen';
             } else {
-                el.style.backgroundColor = ''; // Сброс цвета, если не правильный ответ
+                el.style.backgroundColor = '';
             }
         });
     }
 
     // Функция для проверки номера вопроса на странице
     async function checkForQuestionNumber() {
-        const questionNumberElement = document.querySelector('td.wsqti_item_number');
-        if (questionNumberElement) {
-            const match = questionNumberElement.innerText.match(/Вопрос\s+(\d+)\s+из\s+(\d+)/);
-            if (match) {
+        // Ищем элемент с текстом вопроса в любом месте страницы
+        const questionElements = document.querySelectorAll('div[wtq-block="body"] *');
+        let found = false;
+        
+        questionElements.forEach(el => {
+            const match = el.innerText.match(/Вопрос\s+(\d+)\s+из\s+(\d+)/);
+            if (match && !found) {
+                found = true;
                 const questionNumber = Number(match[1]);
                 const total = Number(match[2]);
+                
                 if (totalQuestions !== total) {
                     totalQuestions = total;
                     questionSlider.max = totalQuestions.toString();
                     questionNumberInput.max = totalQuestions.toString();
                 }
+                
                 updateQuestion(questionNumber);
-
+    
                 if (answersCache.length === 0 && inputLink.value) {
                     await fetchAndCacheAnswers(inputLink.value);
                 }
                 highlightCorrectAnswers();
             }
-        }
-        setTimeout(checkForQuestionNumber, 1000); // Повторная проверка через секунду
+        });
+        
+        setTimeout(checkForQuestionNumber, 1000);
     }
 
     // Добавление кнопки для повторного открытия окна
