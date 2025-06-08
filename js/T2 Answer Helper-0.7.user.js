@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.4
+// @version      0.7.5
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
 // @match        https://*.t2.ru/*
@@ -118,11 +118,12 @@
             alert('Пожалуйста, вставьте ссылку');
             return;
         }
-
+    
         try {
             await fetchAndCacheAnswers(link);
             displayQuestion(answersCache[currentQuestionIndex - 1]);
-            highlightCorrectAnswers();
+            // Добавляем задержку перед подсветкой
+            setTimeout(highlightCorrectAnswers, 300);
         } catch (error) {
             alert('Ошибка при получении ответов');
         }
@@ -142,9 +143,11 @@
         currentQuestionIndex = index;
         questionNumberInput.value = index.toString();
         questionSlider.value = index.toString();
+        
         if (answersCache.length > 0) {
             displayQuestion(answersCache[currentQuestionIndex - 1]);
-            highlightCorrectAnswers();
+            // Добавляем небольшую задержку для обновления DOM
+            setTimeout(highlightCorrectAnswers, 300);
         }
     }
 
@@ -200,43 +203,50 @@
     // Функция для подсветки правильных ответов на странице
     function highlightCorrectAnswers() {
         if (answersCache.length === 0) return;
+        
+        // Сначала сбрасываем все предыдущие подсветки
+        document.querySelectorAll('.highlighted-answer').forEach(el => {
+            el.style.backgroundColor = '';
+            el.classList.remove('highlighted-answer');
+        });
     
         const currentQuestion = answersCache[currentQuestionIndex - 1];
         if (!currentQuestion) return;
     
-        const correctAnswers = currentQuestion.correctTexts;
+        // Ждем пока обновится DOM (если контент динамический)
+        setTimeout(() => {
+            const correctAnswers = currentQuestion.correctTexts;
+            const questionContainer = document.querySelector('.wtq-item-text-table');
+            
+            if (!questionContainer) {
+                console.log('Контейнер вопроса не найден');
+                return;
+            }
     
-        // Сначала сбрасываем предыдущую подсветку
-        document.querySelectorAll('.highlighted-answer').forEach(el => {
-            el.classList.remove('highlighted-answer');
-            el.style.backgroundColor = '';
-        });
+            // Ищем все текстовые элементы
+            const textElements = Array.from(questionContainer.querySelectorAll('*'))
+                .filter(el => el.childNodes.length === 1 && el.childNodes[0].nodeType === Node.TEXT_NODE);
     
-        // Ищем текст в основном контейнере вопроса
-        const questionContainer = document.querySelector('.wtq-item-text-table');
-        if (!questionContainer) return;
-    
-        // Ищем все текстовые элементы в основном контейнере
-        const textElements = questionContainer.querySelectorAll('.wtq-item-text-cell-main, .wtq-item-text-cell-left, .wtq-item-text-cell-right');
-    
-        textElements.forEach(el => {
-            const text = el.textContent.trim();
             correctAnswers.forEach(correct => {
-                if (text.includes(correct)) {
-                    // Подсвечиваем весь элемент
-                    el.style.backgroundColor = 'lightgreen';
-                    el.classList.add('highlighted-answer');
-                    
-                    // Или альтернативно - подсвечиваем только совпадающий текст
-                    const html = el.innerHTML;
-                    const highlighted = html.replace(
-                        new RegExp(escapeRegExp(correct), 'g'), 
-                        `<span class="highlighted-answer" style="background-color: lightgreen;">${correct}</span>`
-                    );
-                    el.innerHTML = highlighted;
-                }
+                textElements.forEach(el => {
+                    if (el.textContent.trim().includes(correct)) {
+                        // Подсвечиваем весь элемент
+                        el.style.backgroundColor = 'lightgreen';
+                        el.classList.add('highlighted-answer');
+                        
+                        // Или подсвечиваем только текст (раскомментировать если нужно)
+                        /*
+                        const html = el.innerHTML;
+                        const highlighted = html.replace(
+                            new RegExp(escapeRegExp(correct), 'g'), 
+                            `<span class="highlighted-answer" style="background-color: lightgreen;">${correct}</span>`
+                        );
+                        el.innerHTML = highlighted;
+                        */
+                    }
+                });
             });
-        });
+        }, 100); // Небольшая задержка для динамического контента
     }
     
     function escapeRegExp(string) {
