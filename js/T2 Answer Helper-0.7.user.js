@@ -36,6 +36,10 @@
         #answerHelper h3 {
             cursor: move;
         }
+        .emoji {
+            font-size: 1.2em;
+            vertical-align: middle;
+        }
     `);
 
     // Создаем плавающее окно
@@ -54,7 +58,7 @@
 
     // Заголовок (для перетаскивания)
     const title = document.createElement('h3');
-    title.innerText = 'Помощник ответов T2';
+    title.innerHTML = '<span class="emoji">🔍</span> Помощник ответов T2';
     title.style.margin = '0 0 10px 0';
     title.style.paddingBottom = '5px';
     title.style.borderBottom = '1px solid #eee';
@@ -85,7 +89,7 @@
     // Поле для ввода ссылки
     const inputLink = document.createElement('input');
     inputLink.type = 'text';
-    inputLink.placeholder = 'Вставьте ссылку на тест';
+    inputLink.placeholder = '📋 Вставьте ссылку на тест';
     inputLink.style.width = '100%';
     inputLink.style.marginBottom = '10px';
     inputLink.style.padding = '5px';
@@ -126,7 +130,7 @@
 
     // Кнопка "Ответы"
     const getAnswersButton = document.createElement('button');
-    getAnswersButton.innerText = 'Загрузить ответы';
+    getAnswersButton.innerHTML = '<span class="emoji">📥</span> Загрузить ответы';
     getAnswersButton.style.width = '100%';
     getAnswersButton.style.marginBottom = '10px';
     getAnswersButton.style.padding = '5px';
@@ -156,18 +160,18 @@
     async function loadAndHighlightAnswers() {
         const link = inputLink.value;
         if (!link) {
-            showInfo('Введите ссылку на тест');
+            showInfo('⚠️ Введите ссылку на тест');
             return;
         }
 
         try {
-            showInfo('Загрузка ответов...');
+            showInfo('⏳ Загрузка ответов...');
             await fetchAndCacheAnswers(link);
             highlightAnswers();
             updateResultField();
-            showInfo(`Загружено ${answersCache.length} вопросов. Текущий вопрос: ${currentQuestionIndex}`);
+            showInfo(`✅ Загружено ${answersCache.length} вопросов. Текущий вопрос: ${currentQuestionIndex}`);
         } catch (error) {
-            showInfo('Ошибка загрузки ответов: ' + error.message);
+            showInfo(`❌ Ошибка загрузки ответов: ${error.message}`);
             console.error(error);
         }
     }
@@ -184,7 +188,7 @@
         if (answersCache.length > 0) {
             highlightAnswers();
             updateResultField();
-            showInfo(`Текущий вопрос: ${currentQuestionIndex}`);
+            showInfo(`📌 Текущий вопрос: ${currentQuestionIndex}`);
         }
     }
 
@@ -268,22 +272,39 @@
     // Функция обновления текстового поля с ответами
     function updateResultField() {
         if (!answersCache[currentQuestionIndex - 1]) {
-            resultField.value = 'Ответы не загружены';
+            resultField.value = '❌ Ответы не загружены';
             return;
         }
 
         const question = answersCache[currentQuestionIndex - 1];
-        resultField.value = `Вопрос ${currentQuestionIndex}:\n${question.title}\n\n` +
-                          `Правильные ответы:\n${question.correctTexts.map(t => `• ${t}`).join('\n')}`;
+        resultField.value = `❓ Вопрос ${currentQuestionIndex}:\n${question.title}\n\n` +
+                          `✅ Правильные ответы:\n${question.correctTexts.map(t => `✔ ${t}`).join('\n')}`;
+    }
+
+    // Функция копирования всех ответов
+    function copyAllAnswersToClipboard() {
+        if (answersCache.length === 0) {
+            showInfo('❌ Нет загруженных ответов для копирования');
+            return;
+        }
+
+        const allAnswers = answersCache.map((q, i) => {
+            return `❓ Вопрос ${i + 1}:\n${q.title}\n\n` +
+                   `✅ Правильные ответы:\n${q.correctTexts.map(t => `✔ ${t}`).join('\n')}\n\n`;
+        }).join('');
+
+        GM_setClipboard(allAnswers, 'text');
+        showInfo('📋 Все ответы скопированы в буфер обмена!');
     }
 
     // Вспомогательная функция для отображения информации
     function showInfo(message) {
-        infoField.textContent = message;
+        infoField.innerHTML = message;
     }
 
-    // Кнопка для повторного открытия окна
-    GM_registerMenuCommand('Открыть помощник ответов', () => {
+    // Меню Tampermonkey
+    GM_registerMenuCommand('📋 Скопировать все вопросы и ответы', copyAllAnswersToClipboard);
+    GM_registerMenuCommand('🔍 Открыть помощник ответов', () => {
         floatDiv.style.display = 'block';
     });
 })();
