@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         T2 Answer Helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.91
+// @version      0.7.92
 // @description  Extract answers from a T2 test and highlight correct ones
 // @author       Your Name
 // @match        https://*.t2.ru/*
