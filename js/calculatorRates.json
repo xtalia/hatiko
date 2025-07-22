@@ -1,10 +1,10 @@
 {
     "all": {
-        "qr": 1.041,
-        "card": 1.051,
-        "six": 0,
-        "ten": 0,
-        "twelve": 0,
+        "qr": 0,
+        "card": 0,
+        "six": 1.081,
+        "ten": 1.120531,
+        "twelve": 1.14281,
         "eighteen": 0,
         "twentyfour": 0,
         "thirtysix": 0
