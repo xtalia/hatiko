@@ -15,6 +15,8 @@ bot.start((ctx) => {
 //Калькулятор
 //Кто работает
 //Курс валют
+//Инфа от сайта Хатико
+//Test
 
 bot.command('export_config', async (ctx) => {
   if (ctx.from.id !== 184944023) {

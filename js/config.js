@@ -3,7 +3,7 @@ const isDebug = process.argv.includes('--debug') || process.argv.includes('-d');
 const fs = require('fs');
 const path = require('path');
 
-const configPath = path.join(__dirname, 'config.json');
+const configPath = path.join(__dirname, 'config/config.json');
 const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
 // Добавляем триггеры которые были в Python конфиге
