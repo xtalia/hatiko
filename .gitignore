@@ -169,3 +169,6 @@ cython_debug/
 /data.json
 /whowork.json
 whowork.json
+/ntb/config.js
+/node_modules
+/js/config.json

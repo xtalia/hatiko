@@ -22,6 +22,8 @@ try:
         config_data = json.load(f)
 except:
     config_data = ""
+    
+
 
 
 GRANTED = config_data['granted']
