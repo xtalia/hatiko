@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором и Trade-In
 // @namespace    http://tampermonkey.net/
-// @version      2.1.9
+// @version      2.1.91
 // @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
