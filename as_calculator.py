@@ -10,7 +10,7 @@ def cash_amount(cash=0, credit_month=36, output=""):
         rassrochka_price_eighteen = round(cash * RATES['eighteen'] / 100) * 100 - 10
         rassrochka_price_twentyfour = round(cash * RATES['twentyfour'] / 100) * 100 - 10
         rassrochka_price_thirtysix = round(cash * RATES['thirtysix'] / 100) * 100 - 10
-        
+
         cashback_amount = round(cash * 0.01)
         prepay_amount = round(cash * 0.05 / 500) * 500
 
@@ -42,7 +42,7 @@ def process_discount(original,discount):
             # Вычисляем процент скидки и сумму со скидкой
             discounted_price = original - discount
             discount_percentage = 100 - discounted_price / (original * 0.01)
-            
+
 
             # Формируем сообщение с результатами
             result_message = f"Изначальная цена: {int(original)}\n"
@@ -54,4 +54,4 @@ def process_discount(original,discount):
             return result_message
         except:
             return "Сломался калькулятор, что-то пошло не так (Только цифры)"
-        
+

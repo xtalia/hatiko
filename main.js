@@ -1,7 +1,7 @@
 const { Telegraf, Markup, session } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
-const config = require('./js/config.js');
+const config = require('./js/config/config.js');
 
 // Импорт модулей (нужно будет переписать их на Node.js)
 // const { cash_amount, process_discount } = require('./as_calculator');

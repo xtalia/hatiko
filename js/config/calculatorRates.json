@@ -1,0 +1,22 @@
+{
+    "all": {
+        "qr": 0,
+        "card": 1.051,
+        "six": 1.081,
+        "ten": 1.120531,
+        "twelve": 1.14281,
+        "eighteen": 0,
+        "twentyfour": 0,
+        "thirtysix": 0
+    },
+    "balakovo": {
+        "qr": 1.0151,
+        "card": 1.031,
+        "six": 1.08881,
+        "ten": 1.12531,
+        "twelve": 1.14281,
+        "eighteen": 0,
+        "twentyfour": 0,
+        "thirtysix": 0
+    }
+}
