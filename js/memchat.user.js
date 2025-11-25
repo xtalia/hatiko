@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Мемный чат с калькулятором и Trade-In
+// @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      2.1.91
-// @description  Набор скриптов для проверки цен, работы с Hatiko, калькулятором и Trade-In
+// @version      3.0.3
+// @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
 // @grant        GM_xmlhttpRequest
@@ -12,22 +12,23 @@
 'use strict';
 
 // Константы
-const SUPERSERVER = 'memchat.tw1.ru:5000'; // Основной сервер
-const BASE_URLS = [ // Базовые URL для Hatiko
+const SUPERSERVER = 'memchat.tw1.ru:5000';
+const BASE_URLS = [
     "https://hatiko.ru",
-    "https://voronezh.hatiko.ru",
+    "https://voronezh.hatiko.ru", 
     "https://lipetsk.hatiko.ru",
     "https://balakovo.hatiko.ru"
 ];
-const UPDATE_INTERVAL = 12 * 60 * 60 * 1000; // 12 часов
+const UPDATE_INTERVAL = 12 * 60 * 60 * 1000;
 const JSON_URL = "https://raw.githubusercontent.com/xtalia/hatiko/refs/heads/main/js/calculatorRates.json";
 
-// Переменные для управления окнами
+// Переменные для управления
 let isDragging = false;
 let offset = { x: 0, y: 0 };
-let enabled = false;  // По умолчанию скрипт отключен
-let commandId;
+let currentAction = null;
 let rateConfigurations = {};
+let chatHistory = [];
+let clearTextEnabled = false;
 
 // Универсальная функция для выполнения запросов к серверу
 function fetchServerData(url, onSuccess, onError) {
@@ -39,209 +40,81 @@ function fetchServerData(url, onSuccess, onError) {
     });
 }
 
-// Функция для раскрытия всех скрытых элементов в карточке товара
-function showAllTabContents() {
-    document.querySelectorAll('.tab-content .hidden').forEach(element => element.classList.remove('hidden'));
+/// clearChatButton - Очистка чата
+function clearChat() {
+    document.getElementById('priceCheckResult').value = '';
+    chatHistory = [];
+    addToChatHistory('system', 'Чат очищен', '🧹');
 }
 
-// Функция для создания окна проверки цен
-function createPriceCheckWindow() {
-    if (!window.priceCheckContainer) {
-        const container = document.createElement('div');
-        container.id = 'priceCheckContainer';
-        container.style.cssText = `
-            position: fixed; top: 10px; right: 10px; width: 360px; background: #fff; border: 1px solid #ccc;
-            border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 10px; display: none;
-            z-index: 9999; box-sizing: border-box;
-        `;
-
-        container.innerHTML = `
-            <div id="priceCheckHeader" style="font-size: 18px; font-weight: bold; margin-bottom: 10px; user-select: none; cursor: move;">
-                Мемный чат
-                <span id="priceCheckCloseButton" style="position: absolute; top: 10px; right: 10px; cursor: pointer;">&#10006;</span>
-            </div>
-            <div style="margin-bottom: 10px;">
-                <input type="text" id="priceCheckInput" placeholder="Введите запрос..." style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-            </div>
-            <div style="margin-bottom: 10px;">
-                <textarea id="priceCheckResult" style="width: 100%; height: 120px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
-            </div>
-            <div id="priceCheckControls" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;">
-                <button id="priceCheckButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🤖</button>
-                <button id="hatikoButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🐶</button>
-                <button id="copyButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📋</button>
-                <button id="whoWorksTodayButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">👨‍💼 Сегодня</button>
-                <button id="whoWorksTomorrowButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">👨‍💼 Завтра</button>
-                <button id="calculatorButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Калькулятор</button>
-                <button id="tradeInButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📱 Trade-In</button>
-                <button id="showAllTabsButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">📂 Раскрыть все</button>
-                <button id="toggleClearTextAndTimeoutButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧹 Очистка и задержка</button>
-            </div>
-            <div id="calculator" style="display: none; margin-top: 10px;">
-                <div style="margin-bottom: 10px;">
-                    <input type="number" id="calculatorCashInput" placeholder="Введите сумму" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <select id="calculatorModeSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-                        <option value="all">Для всех</option>
-                        <option value="balakovo">Для Балаково</option>
-                        <option value="prepay">Предоплата 5%</option>
-                    </select>
-                </div>
-                <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                    <button id="calculatorCalculateButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Посчитать</button>
-                    <button id="calculatorReverseButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">Реверс</button>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <textarea id="calculatorResultField" style="width: 100%; height: 80px; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box;" readonly></textarea>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <input type="number" id="calculatorDiscountInput" placeholder="Введите сумму скидки" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
-                </div>
-                <button id="calculatorApplyDiscountButton" style="width: 100%; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Применить скидку</button>
-            </div>
-<div id="tradeInCalculator" style="display: none; margin-top: 10px;">
-    <!-- Модель и память в одной строке -->
-    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <select id="tradeInModelSelect" style="flex: 1; width:250px; padding: 5px; border-radius: 5px; border: 1px solid #ccc;"></select>
-        <select id="tradeInMemorySelect" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid #ccc;"></select>
-    </div>
-
-    <!-- Батарея и комплектация в одной строке -->
-    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <select id="tradeInBatterySelect" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-            <option value="90">🔋90%+</option>
-            <option value="85">🔋85-90%</option>
-            <option value="0">🔋менее 85%</option>
-        </select>
-        <select id="tradeInDeviceConditionSelect" style="flex: 1; padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-            <option value="device_only">📦Только устройство</option>
-            <option value="device_box">📦Устройство и коробка</option>
-            <option value="full">📦Полный комплект</option>
-        </select>
-    </div>
-
-    <!-- Состояние корпуса и экрана в одной строке -->
-    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <div style="flex: 1;">
-            <label>Состояние корпуса:</label>
-            <select id="tradeInBackCoverConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-                <option value="excellent">В порядке</option>
-                <option value="medium">Мелкие царапины</option>
-                <option value="low">Глубокие царапины</option>
-            </select>
-        </div>
-        <div style="flex: 1;">
-            <label>Состояние экрана:</label>
-            <select id="tradeInScreenConditionSelect" style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-                <option value="excellent">В порядке</option>
-                <option value="medium">Мелкие царапины</option>
-                <option value="low">Глубокие царапины</option>
-            </select>
-        </div>
-    </div>
-
-    <!-- Чекбоксы в одной строке -->
-    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <label style="flex: 1;"><input type="checkbox" id="backCoverCheck"> Замена крышки</label>
-        <label style="flex: 1;"><input type="checkbox" id="screenCheck"> Замена дисплея</label>
-    </div>
-
-    <!-- Результат и кнопки -->
-    <textarea id="tradeInResult" style="width: 100%; height: 150px; resize: none; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 10px;" readonly></textarea>
-    <div style="display: flex; gap: 5px;">
-        <button id="tradeInCalculateButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">Рассчитать</button>
-        <button id="tradeInCloseButton" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">Закрыть</button>
-    </div>
-</div>
-            <div id="clearTextAndTimeoutWindow" style="display: none; margin-top: 10px;">
-                <label style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="clearTextCheckbox"> Очищать текст после Enter
-                    <span style="flex: 1;">
-                        Задержка (мс): <input type="range" id="timeoutSlider" min="1" max="1000" value="500">
-                        <span id="timeoutValue">500</span>
-                    </span>
-                </label>
-            </div>
-        `;
-
-        document.body.appendChild(container);
-
-        // Настройка перетаскивания окна
-        document.getElementById('priceCheckHeader').addEventListener('mousedown', startDrag);
-
-        // Обработчики кнопок
-        document.getElementById('priceCheckButton').addEventListener('click', checkPrice);
-        document.getElementById('hatikoButton').addEventListener('click', checkHatiko);
-        document.getElementById('copyButton').addEventListener('click', copyText);
-        document.getElementById('whoWorksTodayButton').addEventListener('click', () => fetchWhoWorks('today'));
-        document.getElementById('whoWorksTomorrowButton').addEventListener('click', () => fetchWhoWorks('tomorrow'));
-        document.getElementById('calculatorButton').addEventListener('click', toggleCalculator);
-        document.getElementById('tradeInButton').addEventListener('click', toggleTradeInCalculator);
-        document.getElementById('showAllTabsButton').addEventListener('click', showAllTabContents);
-        document.getElementById('toggleClearTextAndTimeoutButton').addEventListener('click', () => {
-            const clearTextAndTimeoutWindow = document.getElementById('clearTextAndTimeoutWindow');
-            clearTextAndTimeoutWindow.style.display = clearTextAndTimeoutWindow.style.display === 'none' ? 'block' : 'none';
-        });
-
-        // Обработчики кнопок калькулятора
-        document.getElementById('calculatorCalculateButton').addEventListener('click', calculate);
-        document.getElementById('calculatorReverseButton').addEventListener('click', reverseCalculate);
-        document.getElementById('calculatorApplyDiscountButton').addEventListener('click', applyDiscount);
-
-        // Обработчик для галочки очистки текста
-        document.getElementById('clearTextCheckbox').addEventListener('change', (event) => enabled = event.target.checked);
-
-        // Обработчик для ползунка задержки
-        document.getElementById('timeoutSlider').addEventListener('input', (event) => {
-            document.getElementById('timeoutValue').textContent = event.target.value;
-        });
-
-        // Обработчик Enter в поле ввода
-        document.getElementById('priceCheckInput').addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') checkPrice();
-        });
-
-        // Кнопка закрытия окна
-        document.getElementById('priceCheckCloseButton').addEventListener('click', () => container.style.display = 'none');
-
-        window.priceCheckContainer = container;
+/// clearTextFunctionality - Глобальная функция очистки текста после Enter
+function setupGlobalClearTextFunctionality() {
+    // Восстанавливаем состояние из localStorage
+    const savedState = localStorage.getItem('clearTextEnabled');
+    if (savedState !== null) {
+        clearTextEnabled = savedState === 'true';
+        document.getElementById('clearTextCheckbox').checked = clearTextEnabled;
     }
-
-    // Показываем окно и фокусируемся на поле ввода
-    window.priceCheckContainer.style.display = 'block';
-    document.getElementById('priceCheckInput').focus();
-    resetTextareaHeight();
+    
+    // Обработчик изменения чекбокса
+    document.getElementById('clearTextCheckbox').addEventListener('change', function() {
+        clearTextEnabled = this.checked;
+        localStorage.setItem('clearTextEnabled', clearTextEnabled);
+        updateClearTextButton();
+    });
+    
+    // Глобальный обработчик нажатия Enter на ВСЕЙ странице
+    document.addEventListener('keypress', function(event) {
+        if (event.key === "Enter" && clearTextEnabled) {
+            const target = event.target;
+            // Проверяем, что это текстовое поле (input или textarea)
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                const timeoutValue = parseInt(document.getElementById('timeoutSlider').value, 10);
+                setTimeout(() => {
+                    target.value = "";
+                }, timeoutValue);
+            }
+        }
+    });
+    
+    updateClearTextButton();
 }
 
-// Функция для копирования текста из textarea
-function copyText() {
-    const resultTextarea = document.getElementById('priceCheckResult');
-    resultTextarea.select();
-    document.execCommand('copy');
-    alert('Текст скопирован!');
-}
-
-// Функция для парсинга HTML и извлечения данных
-function parseHTML(responseText) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(responseText, "text/html");
-    const product = doc.querySelector("a.s-product-header");
-    if (product) {
-        const title = product.getAttribute("title");
-        const relativeLink = product.getAttribute("href");
-        const priceElement = doc.querySelector("span.price");
-        const price = priceElement ? priceElement.textContent.replace(" ", "") : "Нет данных";
-        const link = new URL(relativeLink, BASE_URLS[0]).href;
-        return { title, price, link };
+/// updateClearTextButton - Обновление внешнего вида кнопки очистки
+function updateClearTextButton() {
+    const clearTextButton = document.getElementById('clearTextButton');
+    if (clearTextEnabled) {
+        clearTextButton.style.backgroundColor = '#4CAF50';
+        clearTextButton.textContent = '🧹 Вкл';
+    } else {
+        clearTextButton.style.backgroundColor = '#f44336';
+        clearTextButton.textContent = '🧹 Выкл';
     }
-    return { title: "Нет данных", price: "Нет данных", link: "Нет данных" };
 }
 
-// Функция для проверки цен через Hatiko
+/// priceCheckButton - Основная функция проверки цен
+function checkPrice() {
+    const query = document.getElementById('priceCheckInput').value.trim();
+    if (query !== '') {
+        addToChatHistory('user', query, '🤖 Проверка цен');
+        
+        const url = `http://${SUPERSERVER}/memchat?query=${encodeURIComponent(query)}`;
+        fetchServerData(
+            url,
+            (response) => {
+                addToChatHistory('bot', response.responseText, '🤖 Проверка цен');
+            },
+            (error) => addToChatHistory('bot', error, '🤖 Проверка цен')
+        );
+    }
+}
+
+/// hatikoButton - Проверка цен через Hatiko
 function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (query !== '') {
+        addToChatHistory('user', query, '🐶 Hatiko');
+        
         const urls = BASE_URLS.map(url => `${url}/search/?query=${encodeURIComponent(query)}`);
         let results = [];
         let requestsCompleted = 0;
@@ -264,20 +137,254 @@ function checkHatiko() {
                         messageText += `🌐🅻: ${results[2].link}\n`;
                         messageText += `🌐🗿: ${results[3].link}`;
 
-                        document.getElementById('priceCheckResult').value = messageText;
-                        resetTextareaHeight();
+                        addToChatHistory('bot', messageText, '🐶 Hatiko');
                     }
                 },
-                (error) => document.getElementById('priceCheckResult').value = error
+                (error) => addToChatHistory('bot', error, '🐶 Hatiko')
             );
         });
-    } else {
-        document.getElementById('priceCheckResult').value = 'Введите запрос';
-        resetTextareaHeight();
     }
 }
 
-// Функции для перетаскивания окна
+/// calculatorCalculateButton - Калькулятор кредита
+function calculateCredit() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (input !== '') {
+        const mode = currentAction === 'calculator_all' ? 'all' : 'balakovo';
+        const modeName = currentAction === 'calculator_all' ? 'All' : 'Balakovo';
+        
+        addToChatHistory('user', input, `🧮 Калькулятор ${modeName}`);
+        
+        const cash = parseFloat(input);
+
+        if (isNaN(cash) || cash <= 0) {
+            addToChatHistory('bot', 'Ошибка: Введите корректную сумму.', `🧮 Калькулятор ${modeName}`);
+            return;
+        }
+
+        if (!rateConfigurations[mode]) {
+            addToChatHistory('bot', 'Ошибка: Данные для выбранного режима не загружены.', `🧮 Калькулятор ${modeName}`);
+            return;
+        }
+
+        const rates = rateConfigurations[mode];
+        const qr_price = Math.round(cash * rates.qr / 100) * 100 - 10;
+        const card_price = Math.round(cash * rates.card / 100) * 100 - 10;
+        const rassrochka_price_six = Math.round(cash * rates.six / 100) * 100 - 10;
+        const rassrochka_price_ten = Math.round(cash * rates.ten / 100) * 100 - 10;
+        const rassrochka_price_twelve = Math.round(cash * rates.twelve / 100) * 100 - 10;
+        const rassrochka_price_eighteen = Math.round(cash * rates.eighteen / 100) * 100 - 10;
+        const rassrochka_price_twentyfour = Math.round(cash * rates.twentyfour / 100) * 100 - 10;
+        const rassrochka_price_thirtysix = Math.round(cash * rates.thirtysix / 100) * 100 - 10;
+        const cashback_amount = Math.round(cash * 0.01);
+
+        const resultText = formatText(`
+            💵 Наличными: ${cash} руб.
+            📷 QR: ${qr_price} руб.
+            💳 Картой: ${card_price} руб.
+            
+            🏦 Рассрочка
+            ${generateInstallmentText(rassrochka_price_six, 6)}
+            ${generateInstallmentText(rassrochka_price_ten, 10)}
+            ${generateInstallmentText(rassrochka_price_twelve, 12)}
+            ${generateInstallmentText(rassrochka_price_eighteen, 18)}
+            ${generateInstallmentText(rassrochka_price_twentyfour, 24)}
+            ${generateInstallmentText(rassrochka_price_thirtysix, 36)}
+            
+            💸 Кэшбэк: ${cashback_amount} баллами
+        `);
+
+        addToChatHistory('bot', resultText, `🧮 Калькулятор ${modeName}`);
+    }
+}
+
+/// calculatorReverseButton - Реверс калькулятора
+function calculateReverse() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (input !== '') {
+        addToChatHistory('user', input, '🔄 Реверс');
+        
+        const reverseAmount = parseFloat(input);
+        const mode = 'balakovo';
+
+        if (isNaN(reverseAmount) || reverseAmount <= 0) {
+            addToChatHistory('bot', 'Ошибка: Введите корректную сумму.', '🔄 Реверс');
+            return;
+        }
+
+        const rates = rateConfigurations[mode];
+        const originalQrPrice = Math.round(reverseAmount / rates.qr);
+        const originalCardPrice = Math.round(reverseAmount / rates.card);
+        const originalRassrochkaSix = Math.round(reverseAmount / rates.six);
+        const originalRassrochkaTen = Math.round(reverseAmount / rates.ten);
+        const originalRassrochkaTwelve = Math.round(reverseAmount / rates.twelve || reverseAmount);
+        const originalRassrochkaEighteen = Math.round(reverseAmount / rates.eighteen || reverseAmount);
+        const originalRassrochkaTwentyFour = Math.round(reverseAmount / rates.twentyfour || reverseAmount);
+        const originalRassrochkaThirtySix = Math.round(reverseAmount / rates.thirtysix || reverseAmount);
+
+        const resultText = `
+🔄 РЕВЕРС расчета:
+🔹 QR: ${originalQrPrice} руб.
+🔹 Карта: ${originalCardPrice} руб.
+🔹 Рассрочка 6 мес: ${originalRassrochkaSix} руб.
+🔹 Рассрочка 10 мес: ${originalRassrochkaTen} руб.
+🔹 Рассрочка 12 мес: ${originalRassrochkaTwelve} руб.
+🔹 Рассрочка 18 мес: ${originalRassrochkaEighteen} руб.
+🔹 Рассрочка 24 мес: ${originalRassrochkaTwentyFour} руб.
+🔹 Рассрочка 36 мес: ${originalRassrochkaThirtySix} руб.
+`.trim();
+
+        addToChatHistory('bot', resultText, '🔄 Реверс');
+    }
+}
+
+/// calculatorApplyDiscountButton - Применение скидки
+function applyDiscount() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (input !== '') {
+        addToChatHistory('user', input, '🎉 Скидка');
+        
+        const parts = input.split('-').map(part => part.trim());
+        if (parts.length !== 2) {
+            addToChatHistory('bot', 'Ошибка: Введите в формате "сумма - скидка"', '🎉 Скидка');
+            return;
+        }
+
+        const originalPrice = parseFloat(parts[0]);
+        const discount = parseFloat(parts[1]);
+
+        if (isNaN(originalPrice) || isNaN(discount)) {
+            addToChatHistory('bot', 'Ошибка: Введите корректные числа', '🎉 Скидка');
+            return;
+        }
+
+        const discountedPrice = originalPrice - discount;
+        const discountPercentage = (discount / originalPrice) * 100;
+
+        const resultText = `
+🎉 Применена скидка:
+🔹 Изначальная цена: ${originalPrice} рублей
+🔹 Скидка: ${discount} рублей
+🔹 Процент скидки: ${discountPercentage.toFixed(2)} %
+🔹 Сумма со скидкой: ${discountedPrice} рублей
+`.trim();
+
+        addToChatHistory('bot', resultText, '🎉 Скидка');
+    }
+}
+
+/// calculatorSimpleButton - Простой калькулятор
+function calculateSimple() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (input !== '') {
+        addToChatHistory('user', input, '🧮 Простой калькулятор');
+        
+        try {
+            // Безопасное вычисление выражения
+            const result = Function('"use strict"; return (' + input + ')')();
+            addToChatHistory('bot', `Результат: ${result}`, '🧮 Простой калькулятор');
+        } catch (error) {
+            addToChatHistory('bot', 'Ошибка: Некорректное выражение', '🧮 Простой калькулятор');
+        }
+    }
+}
+
+/// whoWorksTodayButton - Кто работает сегодня
+function fetchWhoWorksToday() {
+    addToChatHistory('user', 'Кто работает сегодня?', '👨‍💼 Сегодня');
+    fetchWhoWorks('today');
+}
+
+/// whoWorksTomorrowButton - Кто работает завтра  
+function fetchWhoWorksTomorrow() {
+    addToChatHistory('user', 'Кто работает завтра?', '👨‍💼 Завтра');
+    fetchWhoWorks('tomorrow');
+}
+
+/// copyButton - Копирование текста
+function copyText() {
+    const resultTextarea = document.getElementById('priceCheckResult');
+    resultTextarea.select();
+    document.execCommand('copy');
+    addToChatHistory('system', 'Текст скопирован в буфер обмена', '📋');
+}
+
+// Вспомогательные функции
+function addToChatHistory(sender, message, emoji = '') {
+    const timestamp = new Date().toLocaleString();
+    let formattedMessage = '';
+    
+    switch(sender) {
+        case 'user':
+            formattedMessage = `=== Я - ${timestamp} - ${emoji} ===\n${message}\n\n`;
+            break;
+        case 'bot':
+            formattedMessage = `=== Калачев - ${emoji} - ${timestamp} ===\n${message}\n\n`;
+            break;
+        case 'system':
+            formattedMessage = `=== Система - ${timestamp} ===\n${message}\n\n`;
+            break;
+    }
+    
+    chatHistory.push({sender, message, emoji, timestamp});
+    
+    const resultTextarea = document.getElementById('priceCheckResult');
+    resultTextarea.value += formattedMessage;
+    resultTextarea.scrollTop = resultTextarea.scrollHeight;
+    
+    // Автоматическая очистка поля ввода для некоторых действий
+    if (sender === 'user' && document.getElementById('clearTextCheckbox').checked) {
+        setTimeout(() => {
+            document.getElementById('priceCheckInput').value = '';
+        }, parseInt(document.getElementById('timeoutSlider').value));
+    }
+}
+
+function generateInstallmentText(price, months) {
+    return `    🔹 ${months} мес.: ${price} руб. (от ${Math.round(price / months)} руб./мес)`;
+}
+
+function formatText(text) {
+    return text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line !== '')
+        .join('\n');
+}
+
+function parseHTML(responseText) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(responseText, "text/html");
+    const product = doc.querySelector("a.s-product-header");
+    if (product) {
+        const title = product.getAttribute("title");
+        const relativeLink = product.getAttribute("href");
+        const priceElement = doc.querySelector("span.price");
+        const price = priceElement ? priceElement.textContent.replace(" ", "") : "Нет данных";
+        const link = new URL(relativeLink, BASE_URLS[0]).href;
+        return { title, price, link };
+    }
+    return { title: "Нет данных", price: "Нет данных", link: "Нет данных" };
+}
+
+function fetchWhoWorks(day) {
+    const url = `http://${SUPERSERVER}/who_work?day=${day}`;
+    fetchServerData(
+        url,
+        (response) => {
+            const contentType = response.responseHeaders.match(/content-type:\s*([\w\/\-]+)/i)[1];
+            if (contentType.includes('json')) {
+                const data = JSON.parse(response.responseText);
+                addToChatHistory('bot', data.text.replace(/\n/g, '\n'), '👨‍💼');
+            } else {
+                addToChatHistory('bot', 'Ошибка: Ответ не в формате JSON', '👨‍💼');
+            }
+        },
+        (error) => addToChatHistory('bot', error, '👨‍💼')
+    );
+}
+
+// Функции для управления окном
 function startDrag(e) {
     isDragging = true;
     const rect = window.priceCheckContainer.getBoundingClientRect();
@@ -302,56 +409,6 @@ function stopDrag() {
     document.removeEventListener('mouseup', stopDrag);
 }
 
-// Функция для проверки цен через основной сервер
-function checkPrice() {
-    const query = document.getElementById('priceCheckInput').value.trim();
-    if (query !== '') {
-        const url = `http://${SUPERSERVER}/memchat?query=${encodeURIComponent(query)}`;
-        fetchServerData(
-            url,
-            (response) => document.getElementById('priceCheckResult').value = response.responseText,
-            (error) => document.getElementById('priceCheckResult').value = error
-        );
-    } else {
-        document.getElementById('priceCheckResult').value = 'Введите запрос';
-        resetTextareaHeight();
-    }
-}
-
-// Функция для сброса высоты textarea
-function resetTextareaHeight() {
-    const textarea = document.getElementById('priceCheckResult');
-    if (textarea) textarea.style.height = '120px';
-}
-
-// Функция для принудительного обновления цен
-function forceUpdate() {
-    const url = `http://${SUPERSERVER}/load_tn?force=true`;
-    fetchServerData(
-        url,
-        () => alert('Принудительное обновление выполнено успешно!'),
-        (error) => alert(error)
-    );
-}
-
-// Функция для получения информации о том, кто работает
-function fetchWhoWorks(day) {
-    const url = `http://${SUPERSERVER}/who_work?day=${day}`;
-    fetchServerData(
-        url,
-        (response) => {
-            const contentType = response.responseHeaders.match(/content-type:\s*([\w\/\-]+)/i)[1];
-            if (contentType.includes('json')) {
-                const data = JSON.parse(response.responseText);
-                document.getElementById('priceCheckResult').value = data.text.replace(/\n/g, '\n');
-            } else {
-                document.getElementById('priceCheckResult').value = 'Ошибка: Ответ не в формате JSON';
-            }
-        },
-        (error) => document.getElementById('priceCheckResult').value = error
-    );
-}
-
 // Функции для калькулятора
 async function loadRateConfigurations() {
     try {
@@ -359,349 +416,167 @@ async function loadRateConfigurations() {
         if (!response.ok) throw new Error(`Ошибка загрузки JSON: ${response.status}`);
         rateConfigurations = await response.json();
         console.log("Данные rateConfigurations загружены:", rateConfigurations);
-        saveToLocalStorage(rateConfigurations);
+        localStorage.setItem("rateConfigurations", JSON.stringify(rateConfigurations));
     } catch (error) {
-        console.error("Не удалось загрузить данные для rateConfigurations:", error);
-        const savedData = loadFromLocalStorage();
+        console.error("Не удалось загрузить данные:", error);
+        const savedData = localStorage.getItem("rateConfigurations");
         if (savedData) {
-            rateConfigurations = savedData;
+            rateConfigurations = JSON.parse(savedData);
             console.log("Используются данные из локального хранилища:", rateConfigurations);
-        } else {
-            console.error("Данные недоступны в локальном хранилище.");
-            rateConfigurations = {}; // Убедимся, что rateConfigurations не undefined
         }
     }
 }
 
-function saveToLocalStorage(data) {
-    localStorage.setItem("rateConfigurations", JSON.stringify(data));
-}
+// Создание интерфейса
+function createPriceCheckWindow() {
+    if (!window.priceCheckContainer) {
+        const container = document.createElement('div');
+        container.id = 'priceCheckContainer';
+        container.style.cssText = `
+            position: fixed; top: 10px; right: 10px; width: 400px; height: 500px; 
+            background: #fff; border: 1px solid #ccc; border-radius: 10px; 
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 10px; display: none;
+            z-index: 9999; box-sizing: border-box; display: flex; flex-direction: column;
+            resize: vertical; overflow: auto;
+        `;
 
-function loadFromLocalStorage() {
-    const savedData = localStorage.getItem("rateConfigurations");
-    return savedData ? JSON.parse(savedData) : null;
-}
+        container.innerHTML = `
+            <div id="priceCheckHeader" style="font-size: 18px; font-weight: bold; margin-bottom: 10px; user-select: none; cursor: move;">
+                Мемный чат
+                <span id="priceCheckCloseButton" style="position: absolute; top: 10px; right: 10px; cursor: pointer;">&#10006;</span>
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <input type="text" id="priceCheckInput" placeholder="Введите запрос..." 
+                    style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            </div>
+            
+            <textarea id="priceCheckResult" 
+                style="flex: 1; width: 100%; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box; margin-bottom: 10px;" 
+                readonly></textarea>
+            
+            <div id="priceCheckControls" style="display: flex; flex-wrap: wrap; gap: 5px;">
+                <!-- Кнопки типа 1 -->
+                <button id="priceCheckButton" class="action-button" data-action="checkPrice" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🤖</button>
+                <button id="hatikoButton" class="action-button" data-action="checkHatiko" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🐶</button>
+                <button id="calculatorAllButton" class="action-button" data-action="calculator_all" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 All</button>
+                <button id="calculatorBalakovoButton" class="action-button" data-action="calculator_balakovo" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Balakovo</button>
+                <button id="calculatorReverseButton" class="action-button" data-action="calculator_reverse" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🔄</button>
+                <button id="calculatorDiscountButton" class="action-button" data-action="calculator_discount" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🎉 Скидка</button>
+                <button id="calculatorSimpleButton" class="action-button" data-action="calculator_simple" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Простой</button>
+                
+                <!-- Кнопки типа 2 -->
+                <button id="whoWorksTodayButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">👨‍💼 Сегодня</button>
+                <button id="whoWorksTomorrowButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">👨‍💼 Завтра</button>
+                <button id="copyButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">📋 Копировать</button>
+                <button id="clearChatButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">🗑️ Очистить чат</button>
+                
+                <!-- Кнопки типа 3 -->
+                <button id="clearTextButton" class="toggle-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">🧹 Выкл</button>
+            </div>
+            
+            <div id="settingsPanel" style="display: none; margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 5px;">
+                <label style="display: block; margin-bottom: 5px;">
+                    <input type="checkbox" id="clearTextCheckbox"> Глобальная очистка текста после Enter
+                </label>
+                <label style="display: block;">
+                    Задержка очистки (мс): 
+                    <input type="range" id="timeoutSlider" min="1" max="1000" value="500" style="width: 100%;">
+                    <span id="timeoutValue">500</span>
+                </label>
+            </div>
+        `;
 
-// Функция для генерации строки с рассрочкой
-function generateInstallmentText(price, months) {
-    return `    🔹 ${months} мес.: ${price} руб. (от ${Math.round(price / months)} руб./мес)`;
-}
-
-function formatText(text) {
-    // Разделяем текст на строки, убираем пустые строки и лишние пробелы
-    return text
-        .split('\n') // Разделяем текст на массив строк
-        .map(line => line.trim()) // Убираем лишние пробелы в каждой строке
-        .filter(line => line !== '') // Убираем пустые строки
-        .join('\n'); // Собираем обратно в одну строку с переносами
-}
-
-function calculate() {
-    const cashInput = document.getElementById('calculatorCashInput');
-    const modeSelect = document.getElementById('calculatorModeSelect');
-    const resultField = document.getElementById('calculatorResultField');
-
-    const cash = parseFloat(cashInput.value);
-    const mode = modeSelect.value;
-
-    if (isNaN(cash) || cash <= 0) {
-        resultField.value = 'Ошибка: Введите корректную сумму.';
-        return;
+        document.body.appendChild(container);
+        setupEventListeners();
+        setupGlobalClearTextFunctionality();
+        window.priceCheckContainer = container;
     }
 
-    if (mode === 'prepay') {
-        const prepayAmount = Math.ceil(cash * 0.05 / 500) * 500;
-        resultField.value = `Предоплата 5%: ${prepayAmount} рублей\n`;
-        return;
-    }
-
-    if (!rateConfigurations[mode]) {
-        resultField.value = 'Ошибка: Данные для выбранного режима не загружены.';
-        return;
-    }
-
-    const rates = rateConfigurations[mode];
-    const qr_price = Math.round(cash * rates.qr / 100) * 100 - 10;
-    const card_price = Math.round(cash * rates.card / 100) * 100 - 10;
-    const rassrochka_price_six = Math.round(cash * rates.six / 100) * 100 - 10;
-    const rassrochka_price_ten = Math.round(cash * rates.ten / 100) * 100 - 10;
-    const rassrochka_price_twelve = Math.round(cash * rates.twelve / 100) * 100 - 10;
-    const rassrochka_price_eighteen = Math.round(cash * rates.eighteen / 100) * 100 - 10;
-    const rassrochka_price_twentyfour = Math.round(cash * rates.twentyfour / 100) * 100 - 10;
-    const rassrochka_price_thirtysix = Math.round(cash * rates.thirtysix / 100) * 100 - 10;
-    const cashback_amount = Math.round(cash * 0.01);
-
-    const resultText = formatText(`
-        💵 Наличными: ${cash} руб.
-        📷 QR: ${qr_price} руб.
-        💳 Картой: ${card_price} руб.
-        
-        🏦 Рассрочка
-        ${[
-         generateInstallmentText(rassrochka_price_six, 6),
-         generateInstallmentText(rassrochka_price_ten, 10),
-         generateInstallmentText(rassrochka_price_twelve, 12),
-         generateInstallmentText(rassrochka_price_eighteen, 18),
-         generateInstallmentText(rassrochka_price_twentyfour, 24),
-         generateInstallmentText(rassrochka_price_thirtysix, 36)
-        ].join('\n')}
-        
-        💸 Кэшбэк: ${cashback_amount} баллами
-        `);
-        
-        resultField.value = resultText;
+    window.priceCheckContainer.style.display = 'flex';
+    document.getElementById('priceCheckInput').focus();
 }
 
-function reverseCalculate() {
-    const cashInput = document.getElementById('calculatorCashInput');
-    const modeSelect = document.getElementById('calculatorModeSelect');
-    const resultField = document.getElementById('calculatorResultField');
-
-    const reverseAmount = parseFloat(cashInput.value);
-    const mode = modeSelect.value;
-
-    if (isNaN(reverseAmount) || reverseAmount <= 0) {
-        resultField.value = 'Ошибка: Введите корректную сумму.';
-        return;
-    }
-
-    const rates = rateConfigurations[mode];
-    const originalQrPrice = Math.round(reverseAmount / rates.qr);
-    const originalCardPrice = Math.round(reverseAmount / rates.card);
-    const originalRassrochkaSix = Math.round(reverseAmount / rates.six);
-    const originalRassrochkaTen = Math.round(reverseAmount / rates.ten);
-    const originalRassrochkaTwelve = Math.round(reverseAmount / rates.twelve || reverseAmount);
-    const originalRassrochkaEighteen = Math.round(reverseAmount / rates.eighteen || reverseAmount);
-    const originalRassrochkaTwentyFour = Math.round(reverseAmount / rates.twentyfour || reverseAmount);
-    const originalRassrochkaThirtySix = Math.round(reverseAmount / rates.thirtysix || reverseAmount);
-
-    resultField.value = `
-🔄 РЕВЕРС расчета:
-🔹 QR: ${originalQrPrice} руб.
-🔹 Карта: ${originalCardPrice} руб.
-🔹 Рассрочка 6 мес: ${originalRassrochkaSix} руб.
-🔹 Рассрочка 10 мес: ${originalRassrochkaTen} руб.
-🔹 Рассрочка 12 мес: ${originalRassrochkaTwelve} руб.
-🔹 Рассрочка 18 мес: ${originalRassrochkaEighteen} руб.
-🔹 Рассрочка 24 мес: ${originalRassrochkaTwentyFour} руб.
-🔹 Рассрочка 36 мес: ${originalRassrochkaThirtySix} руб.
-`.trim();
-}
-
-function applyDiscount() {
-    const cashInput = document.getElementById('calculatorCashInput');
-    const discountInput = document.getElementById('calculatorDiscountInput');
-    const resultField = document.getElementById('calculatorResultField');
-
-    const originalPrice = parseFloat(cashInput.value);
-    const discount = parseFloat(discountInput.value);
-
-    if (!isNaN(discount)) {
-        const discountedPrice = originalPrice - discount;
-        const discountPercentage = (discount / originalPrice) * 100;
-
-        resultField.value = `
-🎉 Применена скидка:
-🔹 Изначальная цена: ${originalPrice} рублей
-🔹 Скидка: ${discount} рублей
-🔹 Процент скидки: ${discountPercentage} %
-🔹 Сумма со скидкой: ${discountedPrice} рублей
-`.trim();
-    } else {
-        resultField.value = 'Ошибка: Введите корректную сумму скидки (только цифры).';
-    }
-}
-
-// Функция для показа/скрытия калькулятора
-function toggleCalculator() {
-    const calculator = document.getElementById('calculator');
-    calculator.style.display = calculator.style.display === 'none' ? 'block' : 'none';
-}
-
-// Функция для показа/скрытия калькулятора Trade-In
-function toggleTradeInCalculator() {
-    const tradeInCalculator = document.getElementById('tradeInCalculator');
-    if (tradeInCalculator.style.display === 'none') {
-        tradeInCalculator.style.display = 'block';
-        loadTradeInData(); // Загружаем данные для Trade-In
-    } else {
-        tradeInCalculator.style.display = 'none';
-    }
-}
-
-// Функция для загрузки данных Trade-In
-function loadTradeInData() {
-    const url = `http://${SUPERSERVER}/load_tn`;
-    fetchServerData(
-        url,
-        (response) => {
-            if (response.status === 200) {
-                const data = JSON.parse(response.responseText);
-                populateTradeInOptions(data);
-            } else {
-                console.error('Ошибка при загрузке данных Trade-In');
-            }
-        },
-        (error) => console.error('Ошибка при загрузке данных Trade-In:', error)
-    );
-}
-
-// Функция для заполнения выпадающих списков Trade-In
-function populateTradeInOptions(data) {
-    const modelSelect = document.getElementById('tradeInModelSelect');
-    modelSelect.innerHTML = '';
-    for (const model in data) {
-        const option = document.createElement('option');
-        option.value = model;
-        option.textContent = model;
-        modelSelect.appendChild(option);
-    }
-
-    // Обновляем список памяти при выборе модели
-    modelSelect.addEventListener('change', () => {
-        const memorySelect = document.getElementById('tradeInMemorySelect');
-        memorySelect.innerHTML = '';
-        const selectedModel = modelSelect.value;
-        if (data[selectedModel]) {
-            data[selectedModel].forEach(item => {
-                const option = document.createElement('option');
-                option.value = item.memory;
-                option.textContent = `${item.memory} GB`;
-                memorySelect.appendChild(option);
-            });
+function setupEventListeners() {
+    // Перетаскивание окна
+    document.getElementById('priceCheckHeader').addEventListener('mousedown', startDrag);
+    
+    // Обработчик Enter в поле ввода
+    document.getElementById('priceCheckInput').addEventListener('keypress', (event) => {
+        if (event.key === 'Enter' && currentAction) {
+            executeCurrentAction();
         }
     });
 
-    // Обработчик для кнопки расчета
-    document.getElementById('tradeInCalculateButton').addEventListener('click', () => calculateTradeIn(data));
+    // Кнопки типа 1 - переключаемые
+    document.querySelectorAll('.action-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            // Сбрасываем фон у всех кнопок типа 1
+            document.querySelectorAll('.action-button').forEach(btn => {
+                btn.style.backgroundColor = '#4CAF50';
+            });
+            
+            // Устанавливаем голубой фон для активной кнопки
+            e.target.style.backgroundColor = '#87CEEB';
+            currentAction = e.target.dataset.action;
+        });
+    });
+
+    // Кнопки типа 2 - мгновенные
+    document.getElementById('whoWorksTodayButton').addEventListener('click', fetchWhoWorksToday);
+    document.getElementById('whoWorksTomorrowButton').addEventListener('click', fetchWhoWorksTomorrow);
+    document.getElementById('copyButton').addEventListener('click', copyText);
+    document.getElementById('clearChatButton').addEventListener('click', clearChat);
+
+    // Кнопки типа 3 - переключатели
+    document.getElementById('clearTextButton').addEventListener('click', function() {
+        const settingsPanel = document.getElementById('settingsPanel');
+        settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Настройки
+    document.getElementById('timeoutSlider').addEventListener('input', (event) => {
+        document.getElementById('timeoutValue').textContent = event.target.value;
+    });
+
+    // Закрытие окна
+    document.getElementById('priceCheckCloseButton').addEventListener('click', () => {
+        window.priceCheckContainer.style.display = 'none';
+    });
 }
 
-// Функция для расчета Trade-In
-function calculateTradeIn(data) {
-    const model = document.getElementById('tradeInModelSelect').value;
-    const memory = document.getElementById('tradeInMemorySelect').value;
-    const battery = document.getElementById('tradeInBatterySelect').value;
-    const deviceCondition = document.getElementById('tradeInDeviceConditionSelect').value;
-    const backCoverCondition = document.getElementById('tradeInBackCoverConditionSelect').value;
-    const screenCondition = document.getElementById('tradeInScreenConditionSelect').value;
-    const backCover = document.getElementById('backCoverCheck').checked;
-    const screen = document.getElementById('screenCheck').checked;
-
-    const modelData = data[model].find(item => item.memory === memory);
-    if (!modelData) {
-        document.getElementById('tradeInResult').value = 'Ошибка: Данные для выбранной модели не найдены.';
-        return;
+function executeCurrentAction() {
+    switch(currentAction) {
+        case 'checkPrice':
+            checkPrice();
+            break;
+        case 'checkHatiko':
+            checkHatiko();
+            break;
+        case 'calculator_all':
+        case 'calculator_balakovo':
+            calculateCredit();
+            break;
+        case 'calculator_reverse':
+            calculateReverse();
+            break;
+        case 'calculator_discount':
+            applyDiscount();
+            break;
+        case 'calculator_simple':
+            calculateSimple();
+            break;
+        default:
+            addToChatHistory('system', 'Выберите действие', '⚠️');
     }
-
-    // Функция для безопасного преобразования строки в число (пустые строки считаются как 0)
-    const safeParseInt = (value) => value === "" ? 0 : parseInt(value, 10);
-
-    let price = safeParseInt(modelData.ideal_price);
-
-    // Корректировка цены в зависимости от состояния батареи
-    if (battery === '0') {
-        price += safeParseInt(modelData.battery_replacement);
-    } else if (battery === '85') {
-        price += safeParseInt(modelData.battery_wear);
-    }
-
-    // Корректировка цены в зависимости от комплектации
-    if (deviceCondition === 'device_only') {
-        price += safeParseInt(modelData.device_only);
-    } else if (deviceCondition === 'device_box') {
-        price += safeParseInt(modelData.device_box);
-    }
-
-    // Корректировка цены в зависимости от состояния корпуса
-    if (backCoverCondition === 'medium') {
-        price += safeParseInt(modelData.back_cover_cond_medium);
-    } else if (backCoverCondition === 'low') {
-        price += safeParseInt(modelData.back_cover_cond_low);
-    }
-
-    // Корректировка цены в зависимости от состояния экрана
-    if (screenCondition === 'medium') {
-        price += safeParseInt(modelData.scr_cond_medium);
-    } else if (screenCondition === 'low') {
-        price += safeParseInt(modelData.scr_cond_low);
-    }
-
-    // Учет замены крышки
-    if (backCover) {
-        price += safeParseInt(modelData.back_cover_replacement);
-    }
-
-    // Учет замены дисплея
-    if (screen) {
-        price += safeParseInt(modelData.screen_replacement);
-    }
-
-    // Статус крышки и дисплея
-    const backCoverStatus = backCover ? '🔧 Требуется замена крышки' : '✅ Крышка в порядке';
-    const screenStatus = screen ? '🔧 Требуется замена дисплея' : '✅ Дисплей в порядке';
-
-    const result = `
-📱 Модель: ${model} (${memory} GB)
-🔋 Батарея: ${battery === '90' ? '90%+' : battery === '85' ? '85-90%' : 'менее 85%'}
-📦 Комплект: ${deviceCondition === 'device_only' ? 'Только устройство' : deviceCondition === 'device_box' ? 'Устройство и коробка' : 'Полный комплект'}
-🏷️ Состояние корпуса: ${backCoverCondition === 'excellent' ? 'В порядке' : backCoverCondition === 'medium' ? 'Мелкие царапины' : 'Глубокие царапины'}
-🖥️ Состояние экрана: ${screenCondition === 'excellent' ? 'В порядке' : screenCondition === 'medium' ? 'Мелкие царапины' : 'Глубокие царапины'}
-${backCoverStatus}
-${screenStatus}
-
-💰 Предварительная цена: ${price} рублей
-
-👉 Окончательная стоимость будет известна только при непосредственной проверке в магазине
-    `;
-
-    document.getElementById('tradeInResult').value = result;
-}
-
-// Функция для очистки текста после нажатия Enter
-function clearText(event) {
-    if (event.key === "Enter" && enabled) {
-        const timeoutValue = parseInt(document.getElementById('timeoutSlider').value, 10);
-        setTimeout(() => event.target.value = "", timeoutValue);  // Очистка текстового поля
-    }
-}
-
-// Функция переключения состояния скрипта (включение/отключение)
-function toggleScript() {
-    enabled = !enabled;
-    updateMenu();
-}
-
-// Функция обновления пункта меню
-function updateMenu() {
-    if (commandId) GM_unregisterMenuCommand(commandId);
-    const menuText = enabled ? "Отключить очистку текста по Enter" : "Включить очистку текста по Enter";
-    commandId = GM_registerMenuCommand(menuText, toggleScript);
 }
 
 // Инициализация
-document.addEventListener('keyup', clearText, true);
-updateMenu();
-
-// Инициализация скрипта
 function initialize() {
-    registerMenuCommands();
-    console.log('Initialization complete');
-
-    // Инициализация калькулятора
-    loadRateConfigurations(); // Загружаем данные при запуске
-
-    // Обновляем данные из JSON каждые 12 часов
-    setInterval(loadRateConfigurations, UPDATE_INTERVAL);
-}
-
-// Регистрация команд меню
-function registerMenuCommands() {
-    GM_registerMenuCommand('Раскрыть всю карточку товара', showAllTabContents, 'S');
     GM_registerMenuCommand('Открыть мемный чат', createPriceCheckWindow);
-    GM_registerMenuCommand('Обновить принудительно цены TradeIn', forceUpdate);
+    loadRateConfigurations();
+    setInterval(loadRateConfigurations, UPDATE_INTERVAL);
+    console.log('Мемный чат инициализирован');
 }
 
-window.addEventListener('load', () => {
-    console.log('Main userscript loaded');
-    initialize();
-});
+window.addEventListener('load', initialize);
