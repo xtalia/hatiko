@@ -5,6 +5,7 @@
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
+// @match        https://*.hatiko.ru/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // ==/UserScript==
@@ -581,4 +582,5 @@ function initialize() {
 
 
 window.addEventListener('load', initialize);
+
 
