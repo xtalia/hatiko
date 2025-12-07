@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      3.0.31
+// @version      3.0.4
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -581,3 +581,4 @@ function initialize() {
 
 
 window.addEventListener('load', initialize);
+
