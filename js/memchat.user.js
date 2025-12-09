@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      3.1.0
+// @version      3.2.0
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -13,10 +13,9 @@
 'use strict';
 
 // Константы
-const SUPERSERVER = 'sergsinist.ddns.net:5000';
 const BASE_URLS = [
     "https://hatiko.ru",
-    "https://voronezh.hatiko.ru", 
+    "https://voronezh.hatiko.ru",
     "https://lipetsk.hatiko.ru",
     "https://balakovo.hatiko.ru"
 ];
@@ -56,14 +55,14 @@ function setupGlobalClearTextFunctionality() {
         clearTextEnabled = savedState === 'true';
         document.getElementById('clearTextCheckbox').checked = clearTextEnabled;
     }
-    
+
     // Обработчик изменения чекбокса
     document.getElementById('clearTextCheckbox').addEventListener('change', function() {
         clearTextEnabled = this.checked;
         localStorage.setItem('clearTextEnabled', clearTextEnabled);
         updateClearTextButton();
     });
-    
+
     // Глобальный обработчик нажатия Enter на ВСЕЙ странице
     document.addEventListener('keypress', function(event) {
         if (event.key === "Enter" && clearTextEnabled) {
@@ -77,7 +76,7 @@ function setupGlobalClearTextFunctionality() {
             }
         }
     });
-    
+
     updateClearTextButton();
 }
 
@@ -93,29 +92,12 @@ function updateClearTextButton() {
     }
 }
 
-/// priceCheckButton - Основная функция проверки цен
-function checkPrice() {
-    const query = document.getElementById('priceCheckInput').value.trim();
-    if (query !== '') {
-        addToChatHistory('user', query, '🤖 Проверка цен');
-        
-        const url = `http://${SUPERSERVER}/memchat?query=${encodeURIComponent(query)}`;
-        fetchServerData(
-            url,
-            (response) => {
-                addToChatHistory('bot', response.responseText, '🤖 Проверка цен');
-            },
-            (error) => addToChatHistory('bot', error, '🤖 Проверка цен')
-        );
-    }
-}
-
 /// hatikoButton - Проверка цен через Hatiko
 function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (query !== '') {
         addToChatHistory('user', query, '🐶 Hatiko');
-        
+
         const urls = BASE_URLS.map(url => `${url}/search/?query=${encodeURIComponent(query)}`);
         let results = [];
         let requestsCompleted = 0;
@@ -153,9 +135,9 @@ function calculateCredit() {
     if (input !== '') {
         const mode = currentAction === 'calculator_all' ? 'all' : 'balakovo';
         const modeName = currentAction === 'calculator_all' ? 'All' : 'Balakovo';
-        
+
         addToChatHistory('user', input, `🧮 Калькулятор ${modeName}`);
-        
+
         const cash = parseFloat(input);
 
         if (isNaN(cash) || cash <= 0) {
@@ -183,7 +165,7 @@ function calculateCredit() {
             💵 Наличными: ${cash} руб.
             📷 QR: ${qr_price} руб.
             💳 Картой: ${card_price} руб.
-            
+
             🏦 Рассрочка
             ${generateInstallmentText(rassrochka_price_six, 6)}
             ${generateInstallmentText(rassrochka_price_ten, 10)}
@@ -191,7 +173,7 @@ function calculateCredit() {
             ${generateInstallmentText(rassrochka_price_eighteen, 18)}
             ${generateInstallmentText(rassrochka_price_twentyfour, 24)}
             ${generateInstallmentText(rassrochka_price_thirtysix, 36)}
-            
+
             💸 Кэшбэк: ${cashback_amount} баллами
         `);
 
@@ -204,7 +186,7 @@ function calculateReverse() {
     const input = document.getElementById('priceCheckInput').value.trim();
     if (input !== '') {
         addToChatHistory('user', input, '🔄 Реверс');
-        
+
         const reverseAmount = parseFloat(input);
         const mode = 'balakovo';
 
@@ -244,7 +226,7 @@ function applyDiscount() {
     const input = document.getElementById('priceCheckInput').value.trim();
     if (input !== '') {
         addToChatHistory('user', input, '🎉 Скидка');
-        
+
         const parts = input.split('-').map(part => part.trim());
         if (parts.length !== 2) {
             addToChatHistory('bot', 'Ошибка: Введите в формате "сумма - скидка"', '🎉 Скидка');
@@ -266,7 +248,7 @@ function applyDiscount() {
 🎉 Применена скидка:
 🔹 Изначальная цена: ${originalPrice} рублей
 🔹 Скидка: ${discount} рублей
-🔹 Процент скидки: ${discountPercentage.toFixed(10)} %
+🔹 Процент скидки: ${discountPercentage.toFixed(2)} %
 🔹 Сумма со скидкой: ${discountedPrice} рублей
 `.trim();
 
@@ -279,7 +261,7 @@ function calculateSimple() {
     const input = document.getElementById('priceCheckInput').value.trim();
     if (input !== '') {
         addToChatHistory('user', input, '🧮 Простой калькулятор');
-        
+
         try {
             // Безопасное вычисление выражения
             const result = Function('"use strict"; return (' + input + ')')();
@@ -296,25 +278,46 @@ function fetchWhoWorksToday() {
     fetchWhoWorks('today');
 }
 
-/// whoWorksTomorrowButton - Кто работает завтра  
+/// whoWorksTomorrowButton - Кто работает завтра
 function fetchWhoWorksTomorrow() {
     addToChatHistory('user', 'Кто работает завтра?', '👨‍💼 Завтра');
     fetchWhoWorks('tomorrow');
 }
 
-/// copyButton - Копирование текста
+/// copyButton - Копирование последнего ответа
 function copyText() {
-    const resultTextarea = document.getElementById('priceCheckResult');
-    resultTextarea.select();
-    document.execCommand('copy');
-    addToChatHistory('system', 'Текст скопирован в буфер обмена', '📋');
+    // Ищем последний ответ от бота в истории
+    let lastBotMessage = null;
+
+    // Идем с конца истории к началу
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+        const entry = chatHistory[i];
+        if (entry.sender === 'bot' || entry.sender === 'system') {
+            lastBotMessage = entry.message;
+            break;
+        }
+    }
+
+    if (lastBotMessage) {
+        // Создаем временный элемент для копирования
+        const tempTextarea = document.createElement('textarea');
+        tempTextarea.value = lastBotMessage;
+        document.body.appendChild(tempTextarea);
+        tempTextarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempTextarea);
+
+        addToChatHistory('system', 'Последний ответ скопирован в буфер обмена', '📋');
+    } else {
+        addToChatHistory('system', 'Нет ответов для копирования', '⚠️');
+    }
 }
 
 // Вспомогательные функции
 function addToChatHistory(sender, message, emoji = '') {
     const timestamp = new Date().toLocaleString();
     let formattedMessage = '';
-    
+
     switch(sender) {
         case 'user':
             formattedMessage = `=== Я - ${timestamp} - ${emoji} ===\n${message}\n\n`;
@@ -326,13 +329,13 @@ function addToChatHistory(sender, message, emoji = '') {
             formattedMessage = `=== Система - ${timestamp} ===\n${message}\n\n`;
             break;
     }
-    
+
     chatHistory.push({sender, message, emoji, timestamp});
-    
+
     const resultTextarea = document.getElementById('priceCheckResult');
     resultTextarea.value += formattedMessage;
     resultTextarea.scrollTop = resultTextarea.scrollHeight;
-    
+
     // Автоматическая очистка поля ввода для некоторых действий
     if (sender === 'user' && document.getElementById('clearTextCheckbox').checked) {
         setTimeout(() => {
@@ -557,7 +560,6 @@ const formattedWithoutDate = formatted.replace(new RegExp(`^📅 ${dateStr}\\n`)
 return `📅 ${dayName} (${dateStr})\n\n${formattedWithoutDate}`;
 }
 
-
 // Функции для управления окном
 function startDrag(e) {
     isDragging = true;
@@ -607,8 +609,8 @@ function createPriceCheckWindow() {
         const container = document.createElement('div');
         container.id = 'priceCheckContainer';
         container.style.cssText = `
-            position: fixed; top: 10px; right: 10px; width: 400px; height: 500px; 
-            background: #fff; border: 1px solid #ccc; border-radius: 10px; 
+            position: fixed; top: 10px; right: 10px; width: 400px; height: 500px;
+            background: #fff; border: 1px solid #ccc; border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 10px; display: none;
             z-index: 9999; box-sizing: border-box; display: flex; flex-direction: column;
             resize: vertical; overflow: auto;
@@ -619,42 +621,41 @@ function createPriceCheckWindow() {
                 Мемный чат
                 <span id="priceCheckCloseButton" style="position: absolute; top: 10px; right: 10px; cursor: pointer;">&#10006;</span>
             </div>
-            
+
             <div style="margin-bottom: 10px;">
-                <input type="text" id="priceCheckInput" placeholder="Введите запрос..." 
+                <input type="text" id="priceCheckInput" placeholder="Введите запрос..."
                     style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
             </div>
-            
-            <textarea id="priceCheckResult" 
-                style="flex: 1; width: 100%; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box; margin-bottom: 10px;" 
+
+            <textarea id="priceCheckResult"
+                style="flex: 1; width: 100%; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box; margin-bottom: 10px;"
                 readonly></textarea>
-            
+
             <div id="priceCheckControls" style="display: flex; flex-wrap: wrap; gap: 5px;">
                 <!-- Кнопки типа 1 -->
-                <button id="priceCheckButton" class="action-button" data-action="checkPrice" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🤖</button>
-                <button id="hatikoButton" class="action-button" data-action="checkHatiko" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🐶</button>
+                <button id="hatikoButton" class="action-button" data-action="checkHatiko" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🐶 Hatiko</button>
                 <button id="calculatorAllButton" class="action-button" data-action="calculator_all" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 All</button>
                 <button id="calculatorBalakovoButton" class="action-button" data-action="calculator_balakovo" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Balakovo</button>
                 <button id="calculatorReverseButton" class="action-button" data-action="calculator_reverse" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🔄</button>
                 <button id="calculatorDiscountButton" class="action-button" data-action="calculator_discount" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🎉 Скидка</button>
                 <button id="calculatorSimpleButton" class="action-button" data-action="calculator_simple" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Простой</button>
-                
+
                 <!-- Кнопки типа 2 -->
                 <button id="whoWorksTodayButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">👨‍💼 Сегодня</button>
                 <button id="whoWorksTomorrowButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">👨‍💼 Завтра</button>
                 <button id="copyButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">📋 Копировать</button>
                 <button id="clearChatButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">🗑️ Очистить чат</button>
-                
+
                 <!-- Кнопки типа 3 -->
                 <button id="clearTextButton" class="toggle-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">🧹 Выкл</button>
             </div>
-            
+
             <div id="settingsPanel" style="display: none; margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 5px;">
                 <label style="display: block; margin-bottom: 5px;">
                     <input type="checkbox" id="clearTextCheckbox"> Глобальная очистка текста после Enter
                 </label>
                 <label style="display: block;">
-                    Задержка очистки (мс): 
+                    Задержка очистки (мс):
                     <input type="range" id="timeoutSlider" min="1" max="1000" value="500" style="width: 100%;">
                     <span id="timeoutValue">500</span>
                 </label>
@@ -669,12 +670,14 @@ function createPriceCheckWindow() {
 
     window.priceCheckContainer.style.display = 'flex';
     document.getElementById('priceCheckInput').focus();
+    // Автоматически активируем первую кнопку (Hatiko)
+    document.getElementById('hatikoButton').click();
 }
 
 function setupEventListeners() {
     // Перетаскивание окна
     document.getElementById('priceCheckHeader').addEventListener('mousedown', startDrag);
-    
+
     // Обработчик Enter в поле ввода
     document.getElementById('priceCheckInput').addEventListener('keypress', (event) => {
         if (event.key === 'Enter' && currentAction) {
@@ -689,7 +692,7 @@ function setupEventListeners() {
             document.querySelectorAll('.action-button').forEach(btn => {
                 btn.style.backgroundColor = '#4CAF50';
             });
-            
+
             // Устанавливаем голубой фон для активной кнопки
             e.target.style.backgroundColor = '#87CEEB';
             currentAction = e.target.dataset.action;
@@ -721,9 +724,6 @@ function setupEventListeners() {
 
 function executeCurrentAction() {
     switch(currentAction) {
-        case 'checkPrice':
-            checkPrice();
-            break;
         case 'checkHatiko':
             checkHatiko();
             break;
@@ -745,15 +745,20 @@ function executeCurrentAction() {
     }
 }
 
+// Функция для закрытия окна чата
+function closeChatWindow() {
+    if (window.priceCheckContainer) {
+        window.priceCheckContainer.style.display = 'none';
+    }
+}
+
 // Инициализация
 function initialize() {
     GM_registerMenuCommand('Открыть мемный чат', createPriceCheckWindow);
+    GM_registerMenuCommand('Закрыть мемный чат', closeChatWindow);
     loadRateConfigurations();
     setInterval(loadRateConfigurations, UPDATE_INTERVAL);
     console.log('Мемный чат инициализирован');
 }
 
-
 window.addEventListener('load', initialize);
-
-
