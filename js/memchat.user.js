@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      3.2.0
+// @version      3.2.1
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -248,7 +248,7 @@ function applyDiscount() {
 🎉 Применена скидка:
 🔹 Изначальная цена: ${originalPrice} рублей
 🔹 Скидка: ${discount} рублей
-🔹 Процент скидки: ${discountPercentage.toFixed(2)} %
+🔹 Процент скидки: ${discountPercentage.toFixed(10)} %
 🔹 Сумма со скидкой: ${discountedPrice} рублей
 `.trim();
 
@@ -762,3 +762,4 @@ function initialize() {
 }
 
 window.addEventListener('load', initialize);
+
