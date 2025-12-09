@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      3.0.4
+// @version      3.1.0
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -13,7 +13,7 @@
 'use strict';
 
 // Константы
-const SUPERSERVER = 'memchat.tw1.ru:5000';
+const SUPERSERVER = 'sergsinist.ddns.net:5000';
 const BASE_URLS = [
     "https://hatiko.ru",
     "https://voronezh.hatiko.ru", 
@@ -369,21 +369,194 @@ function parseHTML(responseText) {
 }
 
 function fetchWhoWorks(day) {
-    const url = `http://${SUPERSERVER}/who_work?day=${day}`;
-    fetchServerData(
-        url,
-        (response) => {
-            const contentType = response.responseHeaders.match(/content-type:\s*([\w\/\-]+)/i)[1];
-            if (contentType.includes('json')) {
-                const data = JSON.parse(response.responseText);
-                addToChatHistory('bot', data.text.replace(/\n/g, '\n'), '👨‍💼');
+    const spreadsheetId = '13KUmHtRXYbXjBE7KQ_4MFQ5VsgUYqu2heURY1y2NwiE';
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    const jsonUrl = 'https://github.com/xtalia/hatiko/raw/refs/heads/main/js/wwPeoples.json';
+
+    // Встроенные замены по умолчанию (резервный вариант)
+    const defaultReplacements = {
+        "У": "😎 как Управляющий",
+        "М": "🙂 как Менеджер",
+        "M": "🙂 как Менеджер",
+        "РБ": "🏪 в ТЦ Рубин",
+        "Р": "🏪 на Рахова",
+        "К": "🏪 на Казачьей",
+        "Ч": "🏪 на Чернышевского",
+        "C": "🏪 в ТЦ СитиМолл",
+        "С": "🏪 в ТЦ СитиМолл",
+        "И": "😱 как SMM",
+        "1": "🧑‍💼 Работает",
+        "А": "👀 Шатает Авито",
+        "114": "🛠️ на Чернышевского 📞114",
+        "111": "🛠️ в ТЦ Рубин 📞111",
+        "104": "🛠️ на Казачьей 📞104",
+        "107": "🛠️ на Казачьей, Старший(-ая) 📞107",
+        "К-100": "🏪 на Казачьей 📞100",
+        "К-101": "🏪 на Казачьей 📞101",
+        "Р-116": "🏪 на Рахова 📞116",
+        "Р-117": "🏪 на Рахова 📞117",
+        "РБ-111": "🏪 в ТЦ Рубин 📞117",
+        "Ч-114": "🏪 На Чернышевского 📞114",
+        "С130": "🏪 в ТЦ СитиМолл 📞131",
+        "С131": "🏪 в ТЦ СитиМолл 📞131",
+        "С132": "🏪 в ТЦ СитиМолл 📞132",
+        "300": "🏪 Никитинская 44 📞300",
+        "310": "⛵ Галерея Чижова 📞310",
+        "311": "⛵ Галерея Чижова 📞311"
+    };
+
+// Пытаемся загрузить JSON с заменами с помощью fetch
+fetch(jsonUrl)
+    .then(response => {
+        if (!response.ok) throw new Error('Network response was not ok');
+        return response.json();
+    })
+    .then(loadedReplacements => {
+        // Объединяем загруженные замены с дефолтными (приоритет у загруженных)
+        const replacements = { ...defaultReplacements, ...loadedReplacements };
+        console.log('JSON с заменами успешно загружен и применен');
+        loadTableWithReplacements(day, url, replacements);
+    })
+    .catch(error => {
+        console.log('Не удалось загрузить JSON, используем значения по умолчанию:', error.message);
+        loadTableWithReplacements(day, url, defaultReplacements);
+    });
+}
+
+// Основная функция загрузки таблицы
+function loadTableWithReplacements(day, url, replacements) {
+    GM_xmlhttpRequest({
+        method: "GET",
+        url: url,
+        onload: function(response) {
+            const html = response.responseText;
+
+            // Улучшенное регулярное выражение для поиска данных
+            const regex = /🎯РАБОЧИЙ_ГРАФИК_ДАННЫЕ🎯([\s\S]*?)🎯/i;
+            const match = html.match(regex);
+
+            if (match && match[1]) {
+                // Декодируем HTML-сущности
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = match[1];
+                let fullText = tempDiv.textContent || tempDiv.innerText || '';
+
+                // Удаляем лишние пробелы и переносы
+                fullText = fullText.trim().replace(/\s+/g, ' ');
+
+                let resultText = '';
+
+                if (day === 'today') {
+                    // Ищем текст между маркерами для сегодня
+                    const todayStart = fullText.indexOf('📅СЕГОДНЯ_НАЧАЛО📅');
+                    const todayEnd = fullText.indexOf('📅СЕГОДНЯ_КОНЕЦ📅');
+
+                    if (todayStart !== -1 && todayEnd !== -1) {
+                        resultText = fullText.substring(todayStart, todayEnd);
+                        // Удаляем маркеры и очищаем
+                        resultText = resultText
+                            .replace('📅СЕГОДНЯ_НАЧАЛО📅', '')
+                            .replace('📅СЕГОДНЯ_КОНЕЦ📅', '')
+                            .trim();
+
+                        // Форматируем вывод с заменами
+                        resultText = formatOutputWithReplacements(resultText, replacements, 'today');
+                    }
+                } else if (day === 'tomorrow') {
+                    // Ищем текст между маркерами для завтра
+                    const tomorrowStart = fullText.indexOf('📅ЗАВТРА_НАЧАЛО📅');
+                    const tomorrowEnd = fullText.indexOf('📅ЗАВТРА_КОНЕЦ📅');
+
+                    if (tomorrowStart !== -1 && tomorrowEnd !== -1) {
+                        resultText = fullText.substring(tomorrowStart, tomorrowEnd);
+                        // Удаляем маркеры и очищаем
+                        resultText = resultText
+                            .replace('📅ЗАВТРА_НАЧАЛО📅', '')
+                            .replace('📅ЗАВТРА_КОНЕЦ📅', '')
+                            .trim();
+
+                        // Форматируем вывод с заменами
+                        resultText = formatOutputWithReplacements(resultText, replacements, 'tomorrow');
+                    }
+                }
+
+                if (!resultText) {
+                    resultText = 'Данные не найдены для выбранного дня';
+                }
+
+                addToChatHistory('bot', resultText, '👨‍💼');
             } else {
-                addToChatHistory('bot', 'Ошибка: Ответ не в формате JSON', '👨‍💼');
+                addToChatHistory('bot', 'Не удалось найти данные в таблице', '👨‍💼');
             }
         },
-        (error) => addToChatHistory('bot', error, '👨‍💼')
-    );
+        onerror: function(error) {
+            addToChatHistory('bot', 'Ошибка сети при загрузке таблицы: ' + error.statusText, '👨‍💼');
+        }
+    });
 }
+
+// Функция для форматирования вывода с заменами
+function formatOutputWithReplacements(text, replacements, day) {
+    // Извлекаем дату из текста
+    const dateMatch = text.match(/(\d{2}\.\d{2}\.\d{4})/);
+    const dateStr = dateMatch ? dateMatch[1] : '';
+
+    // Удаляем дату из текста, чтобы она не мешала
+    text = dateStr ? text.replace(dateStr, '').trim() : text;
+
+    // Разделяем текст на строки
+    let formatted = text
+        .replace(/🏢 /g, '\n\n🏢 В городе ')  // Город с отступом
+        .replace(/👤 /g, '\n👤 ')    // Сотрудник с отступом
+        .replace(/\|/g, ' - ')       // Заменяем | на -
+        .trim();
+
+    // Разбиваем на строки
+    const lines = formatted.split('\n').filter(line => line.trim() !== '');
+
+    // Обрабатываем каждую строку
+// Обрабатываем каждую строку
+const processedLines = lines.map(line => {
+    // Если это строка с сотрудником (начинается с 👤)
+    if (line.startsWith('👤')) {
+        let [employeeInfo, value] = line.includes(' - ') ? line.split(' - ') : [line, ''];
+
+        // Убираем лишние пробелы и добавляем пробел между именем и email
+        employeeInfo = employeeInfo
+            .replace(/👤\s*/, '👤 ')  // Убеждаемся, что после 👤 один пробел
+            .replace(/([а-яА-Я])([a-zA-Z@])/g, '$1 $2')  // Добавляем пробел между кириллицей и латиницей/@
+            .replace(/\s+/g, ' ')  // Убираем множественные пробелы
+            .replace(/\.([a-zA-Z])/g, '. $1')  // Добавляем пробел после точки перед email
+            .trim();
+
+        // Обработка значения
+        value = value ? value.trim() : '';
+
+        if (value && replacements[value]) {
+            value = replacements[value];
+        }
+
+        // Формируем строку
+        if (!value) {
+            return employeeInfo;
+        } else {
+            return `${employeeInfo} - ${value}`;
+        }
+    }
+    // Для городов и других строк просто возвращаем как есть
+    return line;
+});
+
+    // Собираем обратно
+    formatted = processedLines.join('\n');
+
+// Формируем заголовок
+const dayName = day === 'today' ? 'Сегодня' : 'Завтра';
+// Убираем дублирование даты, если уже есть в formatted
+const formattedWithoutDate = formatted.replace(new RegExp(`^📅 ${dateStr}\\n`), '');
+return `📅 ${dayName} (${dateStr})\n\n${formattedWithoutDate}`;
+}
+
 
 // Функции для управления окном
 function startDrag(e) {
