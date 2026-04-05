@@ -2,7 +2,7 @@
 // @name         Polymarket Arb Partner v16.1
 // @version      16.1
 // @description  Light Theme, Larger Fonts, localStorage, Stop-Loss, and Fixed Shoulders
-// @author       Programmer Partner
+// @author       Gemini
 // @match        https://polymarket.com/*
 // @grant        none
 // ==/UserScript==
