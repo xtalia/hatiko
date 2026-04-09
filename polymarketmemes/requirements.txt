@@ -1,0 +1,7 @@
+py-clob-client
+fastapi
+uvicorn
+streamlit
+web3
+requests
+pydantic

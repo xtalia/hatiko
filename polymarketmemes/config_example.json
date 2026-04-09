@@ -1,0 +1,16 @@
+{
+    "wallet": {
+        "address": "0xТВОЙ_АДРЕС_КОШЕЛЬКА",
+        "private_key": "ТВОЙ_ПРИВАТНЫЙ_КЛЮЧ"
+    },
+    "clob_api": {
+        "key": "ВАШ_API_KEY",
+        "secret": "ВАШ_API_SECRET",
+        "passphrase": "ВАШ_API_PASSPHRASE",
+        "host": "https://clob.polymarket.com"
+    },
+    "proxy": {
+        "http": "http://login:password@address:port",
+        "https": "http://login:password@address:port"
+    }
+}
