@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Polymarket Arb Partner v17.1
-// @version      17.1
-// @description  Perfect React Sync, Emoji UI, Robust Input Selectors
+// @name         Polymarket Arb Partner v17.2
+// @version      17.2
+// @description  Perfect React Sync, Emoji UI, Robust Input Selectors + FORCE SELL
 // @author       Programmer Partner
 // @match        https://polymarket.com/*
 // @grant        none
@@ -12,7 +12,7 @@
 
     const STORAGE_KEY = 'poly_arb_settings_v17';
     let state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
-        bank: 20, spread: 10, stopLoss: 20, liveSync: true,
+        bank: 20, spread: 10, stopLoss: 20, liveSync: true, forceSell: false,
         lockUp: false, lockDown: false, upVal: "", downVal: ""
     };
 
@@ -40,10 +40,10 @@
         .fix-btn { padding: 6px 10px; font-size: 12px; border-radius: 4px; cursor: pointer; border: 1px solid #ccc; background: #fff; font-weight: 600; }
         .fix-btn.active-up { background: #21ba45; color: white; border-color: #21ba45; }
         .fix-btn.active-down { background: #db2828; color: white; border-color: #db2828; }
+        .force-sell-label { font-size:10px; cursor:pointer; font-weight:bold; color:#db2828; border: 1px solid #db2828; padding: 2px 6px; border-radius: 4px; background: #ffeeee; }
     `;
     document.head.appendChild(style);
 
-    // ВАЖНО: Хак для обхода защиты React 16+. Гарантирует, что введенные суммы обновляют корзину Polymarket.
     function setNativeValue(input, value) {
         if (!input || value === undefined) return;
         const lastValue = input.value;
@@ -51,13 +51,10 @@
         const event = new Event('input', { bubbles: true });
         event.simulated = true;
         const tracker = input._valueTracker;
-        if (tracker) {
-            tracker.setValue(lastValue);
-        }
+        if (tracker) tracker.setValue(lastValue);
         input.dispatchEvent(event);
     }
 
-    // Ищем инпуты надежно: по типу "decimal" и наличию знака цента в placeholder
     function getPolyInputs() {
         const inputs = Array.from(document.querySelectorAll('input[type="text"][inputmode="decimal"]'));
         return {
@@ -76,7 +73,6 @@
     function injectNativeButtons() {
         const inputs = getPolyInputs();
 
-        // 1. Кнопки над ЦЕНОЙ
         if (inputs.price) {
             const priceContainer = inputs.price.closest('.relative.flex.items-center');
             if (priceContainer && !priceContainer.parentElement.querySelector('.price-inj-row')) {
@@ -97,7 +93,6 @@
             }
         }
 
-        // 2. Кнопки ДОЛЕЙ (в родной ряд кнопок -100/+100)
         if (inputs.amount) {
             const nativeSharesRow = document.querySelector('.flex.gap-1.w-full.justify-between[color="grey"]');
             if (nativeSharesRow && !nativeSharesRow.querySelector('.share-btn-native')) {
@@ -109,8 +104,6 @@
 
     function syncPrices() {
         if (!state.liveSync) return;
-
-        // Надежный парсинг цен из кнопок "Вверх/Вниз"
         const tradeButtons = Array.from(document.querySelectorAll('button.trading-button'));
         const upBtn = tradeButtons.find(b => b.innerText.match(/Up|Yes|Вверх|Да/i));
         const downBtn = tradeButtons.find(b => b.innerText.match(/Down|No|Вниз|Нет/i));
@@ -133,13 +126,29 @@
         }
     }
 
+    // НОВАЯ ФУНКЦИЯ: Принудительное удержание вкладки SELL
+    function enforceSellState() {
+        if (!state.forceSell) return;
+
+        const sellBtn = document.querySelector('button[value="SELL"][role="radio"]');
+        if (sellBtn && sellBtn.getAttribute('aria-checked') !== 'true') {
+            sellBtn.click(); // Имитируем клик, если вкладка не активна
+            console.log("[PolyPulse] ПРЕДОХРАНИТЕЛЬ: Принудительно переключено на SELL");
+        }
+    }
+
     function createUI() {
         const wrap = document.createElement('div');
         wrap.id = 'arb-helper-wrap';
         wrap.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <span style="font-weight:bold;">TERMINAL v17.1 🔌</span>
-                <label style="font-size:10px; cursor:pointer; font-weight:bold;">LIVE SYNC <input type="checkbox" id="sync-toggle" ${state.liveSync ? 'checked' : ''}></label>
+                <span style="font-weight:bold;">TERMINAL v17.2 🔌</span>
+                <div style="display:flex; gap: 10px; align-items: center;">
+                    <label class="force-sell-label" title="Запрещает покупать. Всегда держит вкладку SELL">
+                        <input type="checkbox" id="force-sell-toggle" ${state.forceSell ? 'checked' : ''}> FORCE SELL
+                    </label>
+                    <label style="font-size:10px; cursor:pointer; font-weight:bold;">LIVE SYNC <input type="checkbox" id="sync-toggle" ${state.liveSync ? 'checked' : ''}></label>
+                </div>
             </div>
             <div style="display:flex; gap:8px; margin-bottom:12px;">
                 <button id="btn-fu" class="fix-btn ${state.lockUp ? 'active-up' : ''}">FU</button>
@@ -177,6 +186,7 @@
                 };
             });
             document.getElementById('sync-toggle').onchange = (e) => { state.liveSync = e.target.checked; saveState(); };
+            document.getElementById('force-sell-toggle').onchange = (e) => { state.forceSell = e.target.checked; saveState(); };
             document.getElementById('btn-fu').onclick = () => { state.lockUp = !state.lockUp; saveState(); document.getElementById('btn-fu').classList.toggle('active-up'); };
             document.getElementById('btn-fd').onclick = () => { state.lockDown = !state.lockDown; saveState(); document.getElementById('btn-fd').classList.toggle('active-down'); };
         }
@@ -184,6 +194,7 @@
         if (panel) {
             syncPrices();
             injectNativeButtons();
+            enforceSellState(); // <-- Вызов нового предохранителя
 
             const up = parseFloat(state.upVal), dn = parseFloat(state.downVal), bnk = state.bank || 0;
             if (up && dn) {
@@ -199,5 +210,5 @@
             }
         }
     }
-    setInterval(mainLoop, 500); // 500ms для мгновенной реакции UI
+    setInterval(mainLoop, 500);
 })();
