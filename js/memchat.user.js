@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1
+// @version      5.0.0
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -12,754 +12,982 @@
 
 'use strict';
 
-// Константы
+// ─── Константы ───────────────────────────────────────────────────────────────
 const BASE_URLS = [
     "https://hatiko.ru",
     "https://voronezh.hatiko.ru",
     "https://lipetsk.hatiko.ru",
     "https://balakovo.hatiko.ru"
 ];
-const UPDATE_INTERVAL = 12 * 60 * 60 * 1000;
-const JSON_URL = "https://raw.githubusercontent.com/xtalia/hatiko/refs/heads/main/js/calculatorRates.json";
+const CITY_ICONS = ['🆂', '🆅', '🅻', '🗿'];
+const CITY_NAMES = ['Саратов', 'Воронеж', 'Липецк', 'Балаково'];
 
-// Переменные для управления
-let isDragging = false;
-let offset = { x: 0, y: 0 };
+// ─── Правила калькулятора по умолчанию ───────────────────────────────────────
+const DEFAULT_CALC_RULES = [
+    { name: "Наличными",      percent: 100,   round: 1,   extra: 0   },
+    { name: "QR",             percent: 101.5, round: 100, extra: -10 },
+    { name: "Картой",         percent: 102,   round: 100, extra: -10 },
+    { name: "Рассрочка 6м",   percent: 107,   round: 100, extra: -10 },
+    { name: "Рассрочка 10м",  percent: 109,   round: 100, extra: -10 },
+    { name: "Рассрочка 12м",  percent: 110,   round: 100, extra: -10 },
+    { name: "Рассрочка 18м",  percent: 113,   round: 100, extra: -10 },
+    { name: "Рассрочка 24м",  percent: 116,   round: 100, extra: -10 },
+    { name: "Рассрочка 36м",  percent: 120,   round: 100, extra: -10 },
+    { name: "Кэшбэк 1%",      percent: 1,     round: 1,   extra: 0,  isCashback: true }
+];
+
+// ─── Замены расписания по умолчанию ──────────────────────────────────────────
+const DEFAULT_REPLACEMENTS = {
+    "У":     "😎 как Управляющий",
+    "М":     "🙂 как Менеджер",
+    "M":     "🙂 как Менеджер",
+    "РБ":    "🏪 в ТЦ Рубин",
+    "Р":     "🏪 на Рахова",
+    "К":     "🏪 на Казачьей",
+    "Ч":     "🏪 на Чернышевского",
+    "C":     "🏪 в ТЦ СитиМолл",
+    "С":     "🏪 в ТЦ СитиМолл",
+    "И":     "😱 как SMM",
+    "1":     "🧑‍💼 Работает",
+    "А":     "👀 Шатает Авито",
+    "114":   "🛠️ на Чернышевского 📞114",
+    "111":   "🛠️ в ТЦ Рубин 📞111",
+    "104":   "🛠️ на Казачьей 📞104",
+    "107":   "🛠️ на Казачьей, Старший(-ая) 📞107",
+    "К-100": "🏪 на Казачьей 📞100",
+    "К-101": "🏪 на Казачьей 📞101",
+    "Р-116": "🏪 на Рахова 📞116",
+    "Р-117": "🏪 на Рахова 📞117",
+    "РБ-111":"🏪 в ТЦ Рубин 📞117",
+    "Ч-114": "🏪 На Чернышевского 📞114",
+    "С130":  "🏪 в ТЦ СитиМолл 📞131",
+    "С131":  "🏪 в ТЦ СитиМолл 📞131",
+    "С132":  "🏪 в ТЦ СитиМолл 📞132",
+    "300":   "🏪 Никитинская 44 📞300",
+    "310":   "⛵ Галерея Чижова 📞310",
+    "311":   "⛵ Галерея Чижова 📞311"
+};
+
+// ─── Состояние ────────────────────────────────────────────────────────────────
+let isDragging    = false;
+let offset        = { x: 0, y: 0 };
 let currentAction = null;
-let rateConfigurations = {};
-let chatHistory = [];
+let chatHistory   = [];
 let clearTextEnabled = false;
+let calcRules     = [];
+let scheduleReplacements = {};
 
-// Универсальная функция для выполнения запросов к серверу
+// ─── Загрузка / сохранение ────────────────────────────────────────────────────
+function loadCalcRules() {
+    try {
+        const s = localStorage.getItem('calcRules_v2');
+        calcRules = s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULT_CALC_RULES));
+    } catch { calcRules = JSON.parse(JSON.stringify(DEFAULT_CALC_RULES)); }
+}
+function saveCalcRules() {
+    localStorage.setItem('calcRules_v2', JSON.stringify(calcRules));
+}
+
+function loadScheduleReplacements() {
+    try {
+        const s = localStorage.getItem('scheduleReplacements_v1');
+        scheduleReplacements = s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULT_REPLACEMENTS));
+    } catch { scheduleReplacements = JSON.parse(JSON.stringify(DEFAULT_REPLACEMENTS)); }
+}
+function saveScheduleReplacements() {
+    localStorage.setItem('scheduleReplacements_v1', JSON.stringify(scheduleReplacements));
+}
+
+// ─── Вспомогательные ─────────────────────────────────────────────────────────
 function fetchServerData(url, onSuccess, onError) {
     GM_xmlhttpRequest({
         method: 'GET',
-        url: url,
-        onload: (response) => response.status === 200 ? onSuccess(response) : onError(`Ошибка: ${response.statusText}`),
-        onerror: (error) => onError(`Ошибка при выполнении запроса: ${error}`)
+        url,
+        onload:  r => r.status === 200 ? onSuccess(r) : onError(`Ошибка: ${r.statusText}`),
+        onerror: e => onError(`Ошибка запроса: ${e}`)
     });
 }
 
-/// clearChatButton - Очистка чата
+function applyRule(cash, rule) {
+    if (rule.isCashback) return Math.round(cash * rule.percent / 100);
+    const rounded = Math.round(cash * rule.percent / 100 / rule.round) * rule.round;
+    return rounded + (rule.extra || 0);
+}
+
+// ─── addToChatHistory ─────────────────────────────────────────────────────────
+function addToChatHistory(sender, message, emoji = '') {
+    const ts = new Date().toLocaleString();
+    const map = {
+        user:   `=== Я — ${ts} — ${emoji} ===\n${message}\n\n`,
+        bot:    `=== Ответ — ${emoji} — ${ts} ===\n${message}\n\n`,
+        system: `=== Система — ${ts} ===\n${message}\n\n`
+    };
+    chatHistory.push({ sender, message, emoji, timestamp: ts });
+    const ta = document.getElementById('priceCheckResult');
+    if (ta) {
+        ta.value += map[sender] || '';
+        ta.scrollTop = ta.scrollHeight;
+    }
+    if (sender === 'user' && document.getElementById('clearTextCheckbox')?.checked) {
+        const ms = parseInt(document.getElementById('timeoutSlider')?.value || 500, 10);
+        setTimeout(() => { const inp = document.getElementById('priceCheckInput'); if (inp) inp.value = ''; }, ms);
+    }
+}
+
 function clearChat() {
-    document.getElementById('priceCheckResult').value = '';
+    const ta = document.getElementById('priceCheckResult');
+    if (ta) ta.value = '';
     chatHistory = [];
     addToChatHistory('system', 'Чат очищен', '🧹');
 }
 
-/// clearTextFunctionality - Глобальная функция очистки текста после Enter
-function setupGlobalClearTextFunctionality() {
-    // Восстанавливаем состояние из localStorage
-    const savedState = localStorage.getItem('clearTextEnabled');
-    if (savedState !== null) {
-        clearTextEnabled = savedState === 'true';
-        document.getElementById('clearTextCheckbox').checked = clearTextEnabled;
-    }
+// ─── HATIKO ───────────────────────────────────────────────────────────────────
 
-    // Обработчик изменения чекбокса
-    document.getElementById('clearTextCheckbox').addEventListener('change', function() {
-        clearTextEnabled = this.checked;
-        localStorage.setItem('clearTextEnabled', clearTextEnabled);
-        updateClearTextButton();
-    });
+/**
+ * Парсит страницу поиска Hatiko.
+ * Возвращает: { title, articleNo, price, productUrl }
+ */
+function parseSearchPage(html, baseUrl) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
 
-    // Глобальный обработчик нажатия Enter на ВСЕЙ странице
-    document.addEventListener('keypress', function(event) {
-        if (event.key === "Enter" && clearTextEnabled) {
-            const target = event.target;
-            // Проверяем, что это текстовое поле (input или textarea)
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-                const timeoutValue = parseInt(document.getElementById('timeoutSlider').value, 10);
-                setTimeout(() => {
-                    target.value = "";
-                }, timeoutValue);
-            }
-        }
-    });
+    const product = doc.querySelector('a.s-product-header');
+    if (!product) return null;
 
-    updateClearTextButton();
+    const title        = (product.getAttribute('title') || product.textContent || '').trim();
+    const relativeLink = product.getAttribute('href') || '';
+
+    // Путь товара — один и тот же для всех городов, только домен меняется
+    const pathname   = relativeLink ? new URL(relativeLink, baseUrl).pathname : '';
+    const productUrl = pathname ? `${baseUrl}${pathname}` : baseUrl;
+
+    // Цена: ищем span.price-wrapper span.price или просто span.price
+    const priceEl = doc.querySelector('span.price-wrapper span.price')
+                 || doc.querySelector('span.price');
+    const price   = priceEl
+        ? priceEl.textContent.replace(/\s+/g, ' ').trim() + ' ₽'
+        : '—';
+
+    return { title, price, productUrl, pathname };
 }
 
-/// updateClearTextButton - Обновление внешнего вида кнопки очистки
-function updateClearTextButton() {
-    const clearTextButton = document.getElementById('clearTextButton');
-    if (clearTextEnabled) {
-        clearTextButton.style.backgroundColor = '#4CAF50';
-        clearTextButton.textContent = '🧹 Вкл';
-    } else {
-        clearTextButton.style.backgroundColor = '#f44336';
-        clearTextButton.textContent = '🧹 Выкл';
-    }
+
+
+/**
+ * Парсит страницу КАРТОЧКИ товара для получения статуса наличия.
+ * Возвращает строку статуса.
+ */
+function parseProductPage(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Статус: stock-high, stock-low, stock-none или аналоги
+    const stockHigh = doc.querySelector('.stock-high');
+    const stockLow  = doc.querySelector('.stock-low');
+    const stockNone = doc.querySelector('.stock-none, .stock-out');
+
+    if (stockHigh) return '🟢 ' + stockHigh.textContent.trim();
+    if (stockLow)  return '🟡 ' + stockLow.textContent.trim();
+    if (stockNone) return '🔴 ' + stockNone.textContent.trim();
+
+    // Запасные варианты
+    const stockEl = doc.querySelector('[class*="stock"], [class*="availability"], [class*="наличи"]');
+    if (stockEl) return '📦 ' + stockEl.textContent.trim();
+
+    return '❓ Статус неизвестен';
 }
 
-/// hatikoButton - Проверка цен через Hatiko
 function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
-    if (query !== '') {
-        addToChatHistory('user', query, '🐶 Hatiko');
+    if (!query) return;
+    addToChatHistory('user', query, '🐶 Hatiko');
 
-        const urls = BASE_URLS.map(url => `${url}/search/?query=${encodeURIComponent(query)}`);
-        let results = [];
-        let requestsCompleted = 0;
+    // Шаг 1: ищем товар через поиск Саратова
+    const searchUrl = `${BASE_URLS[0]}/search/?query=${encodeURIComponent(query)}`;
 
-        urls.forEach((url, index) => {
-            fetchServerData(
-                url,
-                (response) => {
-                    const data = parseHTML(response.responseText);
-                    results[index] = { ...data, link: `${BASE_URLS[index]}${new URL(data.link).pathname}` };
-                    requestsCompleted++;
-                    if (requestsCompleted === urls.length) {
-                        let messageText = `🧭 ${results[0].title}\n`;
-                        messageText += `🪙🆂 ${results[0].price}\n`;
-                        messageText += `🪙🆅 ${results[1].price}\n`;
-                        messageText += `🪙🅻 ${results[2].price}\n`;
-                        messageText += `🪙🗿 ${results[3].price}\n\n`;
-                        messageText += `🌐🆂: ${results[0].link}\n`;
-                        messageText += `🌐🆅: ${results[1].link}\n`;
-                        messageText += `🌐🅻: ${results[2].link}\n`;
-                        messageText += `🌐🗿: ${results[3].link}`;
+    fetchServerData(
+        searchUrl,
+        (searchResp) => {
+            const parsed = parseSearchPage(searchResp.responseText, BASE_URLS[0]);
 
-                        addToChatHistory('bot', messageText, '🐶 Hatiko');
+            if (!parsed || !parsed.pathname) {
+                addToChatHistory('bot', 'Товар не найден', '🐶 Hatiko');
+                return;
+            }
+
+            const title    = parsed.title;
+            const pathname = parsed.pathname;
+
+            // Шаг 2: для каждого города заходим на страницу товара
+            let prices            = new Array(BASE_URLS.length).fill('—');
+            let requestsCompleted = 0;
+
+            BASE_URLS.forEach((baseUrl, idx) => {
+                const productUrl = `${baseUrl}${pathname}`;
+
+                fetchServerData(
+                    productUrl,
+                    (productResp) => {
+                        const doc = new DOMParser().parseFromString(productResp.responseText, 'text/html');
+
+                        // span.s-price — это реальная цена, span.s-compare-price — зачёркнутая (0 ₽), её игнорируем
+                        const priceEl = doc.querySelector('span.s-price span.price-wrapper span.price')
+                                     || doc.querySelector('span.price-wrapper span.price')
+                                     || doc.querySelector('span.price');
+
+                        prices[idx] = priceEl
+                            ? priceEl.textContent.replace(/\s+/g, ' ').trim() + ' ₽'
+                            : '—';
+
+                        requestsCompleted++;
+                        if (requestsCompleted === BASE_URLS.length) finish();
+                    },
+                    () => {
+                        prices[idx] = '—';
+                        requestsCompleted++;
+                        if (requestsCompleted === BASE_URLS.length) finish();
                     }
-                },
-                (error) => addToChatHistory('bot', error, '🐶 Hatiko')
-            );
-        });
-    }
-}
+                );
+            });
 
-/// calculatorCalculateButton - Калькулятор кредита
-function calculateCredit() {
-    const input = document.getElementById('priceCheckInput').value.trim();
-    if (input !== '') {
-        const mode = currentAction === 'calculator_all' ? 'all' : 'balakovo';
-        const modeName = currentAction === 'calculator_all' ? 'All' : 'Balakovo';
-
-        addToChatHistory('user', input, `🧮 Калькулятор ${modeName}`);
-
-        const cash = parseFloat(input);
-
-        if (isNaN(cash) || cash <= 0) {
-            addToChatHistory('bot', 'Ошибка: Введите корректную сумму.', `🧮 Калькулятор ${modeName}`);
-            return;
-        }
-
-        if (!rateConfigurations[mode]) {
-            addToChatHistory('bot', 'Ошибка: Данные для выбранного режима не загружены.', `🧮 Калькулятор ${modeName}`);
-            return;
-        }
-
-        const rates = rateConfigurations[mode];
-        const qr_price = Math.round(cash * rates.qr / 100) * 100 - 10;
-        const card_price = Math.round(cash * rates.card / 100) * 100 - 10;
-        const rassrochka_price_six = Math.round(cash * rates.six / 100) * 100 - 10;
-        const rassrochka_price_ten = Math.round(cash * rates.ten / 100) * 100 - 10;
-        const rassrochka_price_twelve = Math.round(cash * rates.twelve / 100) * 100 - 10;
-        const rassrochka_price_eighteen = Math.round(cash * rates.eighteen / 100) * 100 - 10;
-        const rassrochka_price_twentyfour = Math.round(cash * rates.twentyfour / 100) * 100 - 10;
-        const rassrochka_price_thirtysix = Math.round(cash * rates.thirtysix / 100) * 100 - 10;
-        const cashback_amount = Math.round(cash * 0.01);
-
-        const resultText = formatText(`
-            💵 Наличными: ${cash} руб.
-            📷 QR: ${qr_price} руб.
-            💳 Картой: ${card_price} руб.
-
-            🏦 Рассрочка
-            ${generateInstallmentText(rassrochka_price_six, 6)}
-            ${generateInstallmentText(rassrochka_price_ten, 10)}
-            ${generateInstallmentText(rassrochka_price_twelve, 12)}
-            ${generateInstallmentText(rassrochka_price_eighteen, 18)}
-            ${generateInstallmentText(rassrochka_price_twentyfour, 24)}
-            ${generateInstallmentText(rassrochka_price_thirtysix, 36)}
-
-            💸 Кэшбэк: ${cashback_amount} баллами
-        `);
-
-        addToChatHistory('bot', resultText, `🧮 Калькулятор ${modeName}`);
-    }
-}
-
-/// calculatorReverseButton - Реверс калькулятора
-function calculateReverse() {
-    const input = document.getElementById('priceCheckInput').value.trim();
-    if (input !== '') {
-        addToChatHistory('user', input, '🔄 Реверс');
-
-        const reverseAmount = parseFloat(input);
-        const mode = 'balakovo';
-
-        if (isNaN(reverseAmount) || reverseAmount <= 0) {
-            addToChatHistory('bot', 'Ошибка: Введите корректную сумму.', '🔄 Реверс');
-            return;
-        }
-
-        const rates = rateConfigurations[mode];
-        const originalQrPrice = Math.round(reverseAmount / rates.qr);
-        const originalCardPrice = Math.round(reverseAmount / rates.card);
-        const originalRassrochkaSix = Math.round(reverseAmount / rates.six);
-        const originalRassrochkaTen = Math.round(reverseAmount / rates.ten);
-        const originalRassrochkaTwelve = Math.round(reverseAmount / rates.twelve || reverseAmount);
-        const originalRassrochkaEighteen = Math.round(reverseAmount / rates.eighteen || reverseAmount);
-        const originalRassrochkaTwentyFour = Math.round(reverseAmount / rates.twentyfour || reverseAmount);
-        const originalRassrochkaThirtySix = Math.round(reverseAmount / rates.thirtysix || reverseAmount);
-
-        const resultText = `
-🔄 РЕВЕРС расчета:
-🔹 QR: ${originalQrPrice} руб.
-🔹 Карта: ${originalCardPrice} руб.
-🔹 Рассрочка 6 мес: ${originalRassrochkaSix} руб.
-🔹 Рассрочка 10 мес: ${originalRassrochkaTen} руб.
-🔹 Рассрочка 12 мес: ${originalRassrochkaTwelve} руб.
-🔹 Рассрочка 18 мес: ${originalRassrochkaEighteen} руб.
-🔹 Рассрочка 24 мес: ${originalRassrochkaTwentyFour} руб.
-🔹 Рассрочка 36 мес: ${originalRassrochkaThirtySix} руб.
-`.trim();
-
-        addToChatHistory('bot', resultText, '🔄 Реверс');
-    }
-}
-
-/// calculatorApplyDiscountButton - Применение скидки
-function applyDiscount() {
-    const input = document.getElementById('priceCheckInput').value.trim();
-    if (input !== '') {
-        addToChatHistory('user', input, '🎉 Скидка');
-
-        const parts = input.split('-').map(part => part.trim());
-        if (parts.length !== 2) {
-            addToChatHistory('bot', 'Ошибка: Введите в формате "сумма - скидка"', '🎉 Скидка');
-            return;
-        }
-
-        const originalPrice = parseFloat(parts[0]);
-        const discount = parseFloat(parts[1]);
-
-        if (isNaN(originalPrice) || isNaN(discount)) {
-            addToChatHistory('bot', 'Ошибка: Введите корректные числа', '🎉 Скидка');
-            return;
-        }
-
-        const discountedPrice = originalPrice - discount;
-        const discountPercentage = (discount / originalPrice) * 100;
-
-        const resultText = `
-🎉 Применена скидка:
-🔹 Изначальная цена: ${originalPrice} рублей
-🔹 Скидка: ${discount} рублей
-🔹 Процент скидки: ${discountPercentage.toFixed(10)} %
-🔹 Сумма со скидкой: ${discountedPrice} рублей
-`.trim();
-
-        addToChatHistory('bot', resultText, '🎉 Скидка');
-    }
-}
-
-/// calculatorSimpleButton - Простой калькулятор
-function calculateSimple() {
-    const input = document.getElementById('priceCheckInput').value.trim();
-    if (input !== '') {
-        addToChatHistory('user', input, '🧮 Простой калькулятор');
-
-        try {
-            // Безопасное вычисление выражения
-            const result = Function('"use strict"; return (' + input + ')')();
-            addToChatHistory('bot', `Результат: ${result}`, '🧮 Простой калькулятор');
-        } catch (error) {
-            addToChatHistory('bot', 'Ошибка: Некорректное выражение', '🧮 Простой калькулятор');
-        }
-    }
-}
-
-/// whoWorksTodayButton - Кто работает сегодня
-function fetchWhoWorksToday() {
-    addToChatHistory('user', 'Кто работает сегодня?', '👨‍💼 Сегодня');
-    fetchWhoWorks('today');
-}
-
-/// whoWorksTomorrowButton - Кто работает завтра
-function fetchWhoWorksTomorrow() {
-    addToChatHistory('user', 'Кто работает завтра?', '👨‍💼 Завтра');
-    fetchWhoWorks('tomorrow');
-}
-
-/// copyButton - Копирование последнего ответа
-function copyText() {
-    // Ищем последний ответ от бота в истории
-    let lastBotMessage = null;
-
-    // Идем с конца истории к началу
-    for (let i = chatHistory.length - 1; i >= 0; i--) {
-        const entry = chatHistory[i];
-        if (entry.sender === 'bot' || entry.sender === 'system') {
-            lastBotMessage = entry.message;
-            break;
-        }
-    }
-
-    if (lastBotMessage) {
-        // Создаем временный элемент для копирования
-        const tempTextarea = document.createElement('textarea');
-        tempTextarea.value = lastBotMessage;
-        document.body.appendChild(tempTextarea);
-        tempTextarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempTextarea);
-
-        addToChatHistory('system', 'Последний ответ скопирован в буфер обмена', '📋');
-    } else {
-        addToChatHistory('system', 'Нет ответов для копирования', '⚠️');
-    }
-}
-
-// Вспомогательные функции
-function addToChatHistory(sender, message, emoji = '') {
-    const timestamp = new Date().toLocaleString();
-    let formattedMessage = '';
-
-    switch(sender) {
-        case 'user':
-            formattedMessage = `=== Я - ${timestamp} - ${emoji} ===\n${message}\n\n`;
-            break;
-        case 'bot':
-            formattedMessage = `=== Калачев - ${emoji} - ${timestamp} ===\n${message}\n\n`;
-            break;
-        case 'system':
-            formattedMessage = `=== Система - ${timestamp} ===\n${message}\n\n`;
-            break;
-    }
-
-    chatHistory.push({sender, message, emoji, timestamp});
-
-    const resultTextarea = document.getElementById('priceCheckResult');
-    resultTextarea.value += formattedMessage;
-    resultTextarea.scrollTop = resultTextarea.scrollHeight;
-
-    // Автоматическая очистка поля ввода для некоторых действий
-    if (sender === 'user' && document.getElementById('clearTextCheckbox').checked) {
-        setTimeout(() => {
-            document.getElementById('priceCheckInput').value = '';
-        }, parseInt(document.getElementById('timeoutSlider').value));
-    }
-}
-
-function generateInstallmentText(price, months) {
-    return `    🔹 ${months} мес.: ${price} руб. (от ${Math.round(price / months)} руб./мес)`;
-}
-
-function formatText(text) {
-    return text
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line !== '')
-        .join('\n');
-}
-
-function parseHTML(responseText) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(responseText, "text/html");
-    const product = doc.querySelector("a.s-product-header");
-    if (product) {
-        const title = product.getAttribute("title");
-        const relativeLink = product.getAttribute("href");
-        const priceElement = doc.querySelector("span.price");
-        const price = priceElement ? priceElement.textContent.replace(" ", "") : "Нет данных";
-        const link = new URL(relativeLink, BASE_URLS[0]).href;
-        return { title, price, link };
-    }
-    return { title: "Нет данных", price: "Нет данных", link: "Нет данных" };
-}
-
-function fetchWhoWorks(day) {
-    const spreadsheetId = '13KUmHtRXYbXjBE7KQ_4MFQ5VsgUYqu2heURY1y2NwiE';
-    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-    const jsonUrl = 'https://github.com/xtalia/hatiko/raw/refs/heads/main/js/wwPeoples.json';
-
-    // Встроенные замены по умолчанию (резервный вариант)
-    const defaultReplacements = {
-        "У": "😎 как Управляющий",
-        "М": "🙂 как Менеджер",
-        "M": "🙂 как Менеджер",
-        "РБ": "🏪 в ТЦ Рубин",
-        "Р": "🏪 на Рахова",
-        "К": "🏪 на Казачьей",
-        "Ч": "🏪 на Чернышевского",
-        "C": "🏪 в ТЦ СитиМолл",
-        "С": "🏪 в ТЦ СитиМолл",
-        "И": "😱 как SMM",
-        "1": "🧑‍💼 Работает",
-        "А": "👀 Шатает Авито",
-        "114": "🛠️ на Чернышевского 📞114",
-        "111": "🛠️ в ТЦ Рубин 📞111",
-        "104": "🛠️ на Казачьей 📞104",
-        "107": "🛠️ на Казачьей, Старший(-ая) 📞107",
-        "К-100": "🏪 на Казачьей 📞100",
-        "К-101": "🏪 на Казачьей 📞101",
-        "Р-116": "🏪 на Рахова 📞116",
-        "Р-117": "🏪 на Рахова 📞117",
-        "РБ-111": "🏪 в ТЦ Рубин 📞117",
-        "Ч-114": "🏪 На Чернышевского 📞114",
-        "С130": "🏪 в ТЦ СитиМолл 📞131",
-        "С131": "🏪 в ТЦ СитиМолл 📞131",
-        "С132": "🏪 в ТЦ СитиМолл 📞132",
-        "300": "🏪 Никитинская 44 📞300",
-        "310": "⛵ Галерея Чижова 📞310",
-        "311": "⛵ Галерея Чижова 📞311"
-    };
-
-// Пытаемся загрузить JSON с заменами с помощью fetch
-fetch(jsonUrl)
-    .then(response => {
-        if (!response.ok) throw new Error('Network response was not ok');
-        return response.json();
-    })
-    .then(loadedReplacements => {
-        // Объединяем загруженные замены с дефолтными (приоритет у загруженных)
-        const replacements = { ...defaultReplacements, ...loadedReplacements };
-        console.log('JSON с заменами успешно загружен и применен');
-        loadTableWithReplacements(day, url, replacements);
-    })
-    .catch(error => {
-        console.log('Не удалось загрузить JSON, используем значения по умолчанию:', error.message);
-        loadTableWithReplacements(day, url, defaultReplacements);
-    });
-}
-
-// Основная функция загрузки таблицы
-function loadTableWithReplacements(day, url, replacements) {
-    GM_xmlhttpRequest({
-        method: "GET",
-        url: url,
-        onload: function(response) {
-            const html = response.responseText;
-
-            // Улучшенное регулярное выражение для поиска данных
-            const regex = /🎯РАБОЧИЙ_ГРАФИК_ДАННЫЕ🎯([\s\S]*?)🎯/i;
-            const match = html.match(regex);
-
-            if (match && match[1]) {
-                // Декодируем HTML-сущности
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = match[1];
-                let fullText = tempDiv.textContent || tempDiv.innerText || '';
-
-                // Удаляем лишние пробелы и переносы
-                fullText = fullText.trim().replace(/\s+/g, ' ');
-
-                let resultText = '';
-
-                if (day === 'today') {
-                    // Ищем текст между маркерами для сегодня
-                    const todayStart = fullText.indexOf('📅СЕГОДНЯ_НАЧАЛО📅');
-                    const todayEnd = fullText.indexOf('📅СЕГОДНЯ_КОНЕЦ📅');
-
-                    if (todayStart !== -1 && todayEnd !== -1) {
-                        resultText = fullText.substring(todayStart, todayEnd);
-                        // Удаляем маркеры и очищаем
-                        resultText = resultText
-                            .replace('📅СЕГОДНЯ_НАЧАЛО📅', '')
-                            .replace('📅СЕГОДНЯ_КОНЕЦ📅', '')
-                            .trim();
-
-                        // Форматируем вывод с заменами
-                        resultText = formatOutputWithReplacements(resultText, replacements, 'today');
-                    }
-                } else if (day === 'tomorrow') {
-                    // Ищем текст между маркерами для завтра
-                    const tomorrowStart = fullText.indexOf('📅ЗАВТРА_НАЧАЛО📅');
-                    const tomorrowEnd = fullText.indexOf('📅ЗАВТРА_КОНЕЦ📅');
-
-                    if (tomorrowStart !== -1 && tomorrowEnd !== -1) {
-                        resultText = fullText.substring(tomorrowStart, tomorrowEnd);
-                        // Удаляем маркеры и очищаем
-                        resultText = resultText
-                            .replace('📅ЗАВТРА_НАЧАЛО📅', '')
-                            .replace('📅ЗАВТРА_КОНЕЦ📅', '')
-                            .trim();
-
-                        // Форматируем вывод с заменами
-                        resultText = formatOutputWithReplacements(resultText, replacements, 'tomorrow');
-                    }
-                }
-
-                if (!resultText) {
-                    resultText = 'Данные не найдены для выбранного дня';
-                }
-
-                addToChatHistory('bot', resultText, '👨‍💼');
-            } else {
-                addToChatHistory('bot', 'Не удалось найти данные в таблице', '👨‍💼');
+            function finish() {
+                let msg = `🧭 ${title}\n\n`;
+                BASE_URLS.forEach((baseUrl, i) => {
+                    msg += `🪙${CITY_ICONS[i]} ${prices[i]}\n`;
+                });
+                msg += '\n';
+                BASE_URLS.forEach((baseUrl, i) => {
+                    msg += `🌐${CITY_ICONS[i]}: ${baseUrl}${pathname}\n`;
+                });
+                addToChatHistory('bot', msg.trim(), '🐶 Hatiko');
             }
         },
-        onerror: function(error) {
-            addToChatHistory('bot', 'Ошибка сети при загрузке таблицы: ' + error.statusText, '👨‍💼');
+        (err) => {
+            addToChatHistory('bot', 'Ошибка поиска: ' + err, '🐶 Hatiko');
         }
+    );
+}
+
+
+
+
+
+// ─── Калькулятор ──────────────────────────────────────────────────────────────
+function calculateCredit() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (!input) return;
+    addToChatHistory('user', input, '🧮 Калькулятор');
+    const cash = parseFloat(input);
+    if (isNaN(cash) || cash <= 0) {
+        addToChatHistory('bot', 'Ошибка: введите корректную сумму.', '🧮 Калькулятор');
+        return;
+    }
+    const lines = calcRules.map(rule => {
+        const result = applyRule(cash, rule);
+        return rule.isCashback
+            ? `💸 ${rule.name}: ${result} баллами`
+            : `🔹 ${rule.name}: ${result} руб.`;
+    });
+    addToChatHistory('bot', lines.join('\n'), '🧮 Калькулятор');
+}
+
+function calculateReverse() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (!input) return;
+    addToChatHistory('user', input, '🔄 Реверс');
+    const amount = parseFloat(input);
+    if (isNaN(amount) || amount <= 0) {
+        addToChatHistory('bot', 'Ошибка: введите корректную сумму.', '🔄 Реверс');
+        return;
+    }
+    const lines = calcRules
+        .filter(r => !r.isCashback && r.percent > 0)
+        .map(r => {
+            const original = Math.round((amount - (r.extra || 0)) / r.percent * 100);
+            return `🔹 ${r.name}: ${original} руб.`;
+        });
+    addToChatHistory('bot', '🔄 РЕВЕРС расчёта:\n' + lines.join('\n'), '🔄 Реверс');
+}
+
+/**
+ * Скидка / Наценка
+ * Форматы:
+ *   цена - скидка   → вычесть
+ *   цена + наценка  → прибавить
+ */
+function applyDiscountOrMarkup() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (!input) return;
+    addToChatHistory('user', input, '🎉 Скидка/Наценка');
+
+    // Определяем операцию: + или -
+    const minusIdx = input.lastIndexOf('-');
+    const plusIdx  = input.lastIndexOf('+');
+
+    let op = null, splitIdx = -1;
+    if (minusIdx > 0 && minusIdx > plusIdx) { op = '-'; splitIdx = minusIdx; }
+    else if (plusIdx > 0)                   { op = '+'; splitIdx = plusIdx;  }
+
+    if (!op) {
+        addToChatHistory('bot', 'Ошибка: формат — "сумма - скидка" или "сумма + наценка"', '🎉');
+        return;
+    }
+
+    const orig = parseFloat(input.substring(0, splitIdx).trim());
+    const diff = parseFloat(input.substring(splitIdx + 1).trim());
+
+    if (isNaN(orig) || isNaN(diff)) {
+        addToChatHistory('bot', 'Ошибка: некорректные числа', '🎉');
+        return;
+    }
+
+    const result = op === '-' ? orig - diff : orig + diff;
+    const pct    = Math.abs(diff / orig * 100).toFixed(2);
+    const label  = op === '-' ? '🎉 Скидка' : '📈 Наценка';
+    const verb   = op === '-' ? 'Скидка'    : 'Наценка';
+
+    addToChatHistory('bot',
+        `${label}:\n` +
+        `🔹 Было: ${orig} руб.\n` +
+        `🔹 ${verb}: ${diff} руб. (${pct}%)\n` +
+        `🔹 Итого: ${result} руб.`,
+        '🎉');
+}
+
+function calculateSimple() {
+    const input = document.getElementById('priceCheckInput').value.trim();
+    if (!input) return;
+    addToChatHistory('user', input, '∑ Простой');
+    try {
+        const result = Function('"use strict"; return (' + input + ')')();
+        addToChatHistory('bot', `Результат: ${result}`, '∑ Простой');
+    } catch {
+        addToChatHistory('bot', 'Ошибка: некорректное выражение', '∑ Простой');
+    }
+}
+
+function copyText() {
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+        const e = chatHistory[i];
+        if (e.sender === 'bot' || e.sender === 'system') {
+            const ta = document.createElement('textarea');
+            ta.value = e.message;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            addToChatHistory('system', 'Последний ответ скопирован', '📋');
+            return;
+        }
+    }
+    addToChatHistory('system', 'Нет ответов для копирования', '⚠️');
+}
+
+// ─── Расписание ───────────────────────────────────────────────────────────────
+function fetchWhoWorksToday()    { addToChatHistory('user', 'Кто работает сегодня?', '👨‍💼 Сегодня'); fetchWhoWorks('today'); }
+function fetchWhoWorksTomorrow() { addToChatHistory('user', 'Кто работает завтра?',  '👨‍💼 Завтра');  fetchWhoWorks('tomorrow'); }
+
+function fetchWhoWorks(day) {
+    const url     = `https://docs.google.com/spreadsheets/d/13KUmHtRXYbXjBE7KQ_4MFQ5VsgUYqu2heURY1y2NwiE/edit`;
+    const jsonUrl = 'https://github.com/xtalia/hatiko/raw/refs/heads/main/js/wwPeoples.json';
+
+    fetch(jsonUrl)
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(loaded => loadTableWithReplacements(day, url, { ...scheduleReplacements, ...loaded }))
+        .catch(()    => loadTableWithReplacements(day, url, scheduleReplacements));
+}
+
+function loadTableWithReplacements(day, url, replacements) {
+    GM_xmlhttpRequest({
+        method: 'GET', url,
+        onload(response) {
+            const regex = /🎯РАБОЧИЙ_ГРАФИК_ДАННЫЕ🎯([\s\S]*?)🎯/i;
+            const match = response.responseText.match(regex);
+            if (!match?.[1]) { addToChatHistory('bot', 'Не удалось найти данные в таблице', '👨‍💼'); return; }
+
+            const tmp = document.createElement('div');
+            tmp.innerHTML = match[1];
+            let full = (tmp.textContent || '').trim().replace(/\s+/g, ' ');
+
+            const markers = {
+                today:    ['📅СЕГОДНЯ_НАЧАЛО📅', '📅СЕГОДНЯ_КОНЕЦ📅'],
+                tomorrow: ['📅ЗАВТРА_НАЧАЛО📅',   '📅ЗАВТРА_КОНЕЦ📅']
+            };
+            const [sm, em] = markers[day];
+            const si = full.indexOf(sm), ei = full.indexOf(em);
+            if (si === -1 || ei === -1) { addToChatHistory('bot', 'Данные не найдены', '👨‍💼'); return; }
+
+            let text = full.substring(si, ei).replace(sm, '').replace(em, '').trim();
+            addToChatHistory('bot', formatOutputWithReplacements(text, replacements, day), '👨‍💼');
+        },
+        onerror(e) { addToChatHistory('bot', 'Ошибка сети: ' + e.statusText, '👨‍💼'); }
     });
 }
 
-// Функция для форматирования вывода с заменами
 function formatOutputWithReplacements(text, replacements, day) {
-    // Извлекаем дату из текста
     const dateMatch = text.match(/(\d{2}\.\d{2}\.\d{4})/);
     const dateStr = dateMatch ? dateMatch[1] : '';
+    if (dateStr) text = text.replace(dateStr, '').trim();
 
-    // Удаляем дату из текста, чтобы она не мешала
-    text = dateStr ? text.replace(dateStr, '').trim() : text;
-
-    // Разделяем текст на строки
     let formatted = text
-        .replace(/🏢 /g, '\n\n🏢 В городе ')  // Город с отступом
-        .replace(/👤 /g, '\n👤 ')    // Сотрудник с отступом
-        .replace(/\|/g, ' - ')       // Заменяем | на -
+        .replace(/🏢 /g, '\n\n🏢 В городе ')
+        .replace(/👤 /g, '\n👤 ')
+        .replace(/\|/g, ' - ')
         .trim();
 
-    // Разбиваем на строки
-    const lines = formatted.split('\n').filter(line => line.trim() !== '');
+    const lines = formatted.split('\n').filter(l => l.trim());
+    const processed = lines.map(line => {
+        if (!line.startsWith('👤')) return line;
+        let [info, value] = line.includes(' - ') ? line.split(' - ') : [line, ''];
+        info = info.replace(/👤\s*/, '👤 ')
+                   .replace(/([а-яА-Я])([a-zA-Z@])/g, '$1 $2')
+                   .replace(/\s+/g, ' ')
+                   .replace(/\.([a-zA-Z])/g, '. $1').trim();
+        value = (value || '').trim();
+        if (value && replacements[value]) value = replacements[value];
+        return value ? `${info} - ${value}` : info;
+    });
 
-    // Обрабатываем каждую строку
-// Обрабатываем каждую строку
-const processedLines = lines.map(line => {
-    // Если это строка с сотрудником (начинается с 👤)
-    if (line.startsWith('👤')) {
-        let [employeeInfo, value] = line.includes(' - ') ? line.split(' - ') : [line, ''];
-
-        // Убираем лишние пробелы и добавляем пробел между именем и email
-        employeeInfo = employeeInfo
-            .replace(/👤\s*/, '👤 ')  // Убеждаемся, что после 👤 один пробел
-            .replace(/([а-яА-Я])([a-zA-Z@])/g, '$1 $2')  // Добавляем пробел между кириллицей и латиницей/@
-            .replace(/\s+/g, ' ')  // Убираем множественные пробелы
-            .replace(/\.([a-zA-Z])/g, '. $1')  // Добавляем пробел после точки перед email
-            .trim();
-
-        // Обработка значения
-        value = value ? value.trim() : '';
-
-        if (value && replacements[value]) {
-            value = replacements[value];
-        }
-
-        // Формируем строку
-        if (!value) {
-            return employeeInfo;
-        } else {
-            return `${employeeInfo} - ${value}`;
-        }
-    }
-    // Для городов и других строк просто возвращаем как есть
-    return line;
-});
-
-    // Собираем обратно
-    formatted = processedLines.join('\n');
-
-// Формируем заголовок
-const dayName = day === 'today' ? 'Сегодня' : 'Завтра';
-// Убираем дублирование даты, если уже есть в formatted
-const formattedWithoutDate = formatted.replace(new RegExp(`^📅 ${dateStr}\\n`), '');
-return `📅 ${dayName} (${dateStr})\n\n${formattedWithoutDate}`;
+    const dayName = day === 'today' ? 'Сегодня' : 'Завтра';
+    return `📅 ${dayName} (${dateStr})\n\n${processed.join('\n')}`;
 }
 
-// Функции для управления окном
+// ─── Перетаскивание ───────────────────────────────────────────────────────────
 function startDrag(e) {
+    if (e.target.closest('button, input, textarea, select')) return;
     isDragging = true;
     const rect = window.priceCheckContainer.getBoundingClientRect();
     offset.x = e.clientX - rect.left;
     offset.y = e.clientY - rect.top;
-
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', stopDrag);
 }
-
 function drag(e) {
-    if (isDragging) {
-        window.priceCheckContainer.style.right = 'auto';
-        window.priceCheckContainer.style.left = `${e.clientX - offset.x}px`;
-        window.priceCheckContainer.style.top = `${e.clientY - offset.y}px`;
-    }
+    if (!isDragging) return;
+    window.priceCheckContainer.style.right = 'auto';
+    window.priceCheckContainer.style.left  = `${e.clientX - offset.x}px`;
+    window.priceCheckContainer.style.top   = `${e.clientY - offset.y}px`;
 }
-
 function stopDrag() {
     isDragging = false;
     document.removeEventListener('mousemove', drag);
     document.removeEventListener('mouseup', stopDrag);
 }
 
-// Функции для калькулятора
-async function loadRateConfigurations() {
-    try {
-        const response = await fetch(JSON_URL);
-        if (!response.ok) throw new Error(`Ошибка загрузки JSON: ${response.status}`);
-        rateConfigurations = await response.json();
-        console.log("Данные rateConfigurations загружены:", rateConfigurations);
-        localStorage.setItem("rateConfigurations", JSON.stringify(rateConfigurations));
-    } catch (error) {
-        console.error("Не удалось загрузить данные:", error);
-        const savedData = localStorage.getItem("rateConfigurations");
-        if (savedData) {
-            rateConfigurations = JSON.parse(savedData);
-            console.log("Используются данные из локального хранилища:", rateConfigurations);
+// ─── Панель правил калькулятора ───────────────────────────────────────────────
+function buildCalcRulesPanel() {
+    const panel = document.getElementById('calcRulesPanel');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'display:grid;grid-template-columns:1fr 72px 72px 88px 30px;gap:4px;margin-bottom:6px;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;';
+    hdr.innerHTML = '<span>Название</span><span>%</span><span>Округл.</span><span>Доп.</span><span></span>';
+    panel.appendChild(hdr);
+
+    calcRules.forEach((rule, i) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:grid;grid-template-columns:1fr 72px 72px 88px 30px;gap:4px;margin-bottom:4px;align-items:center;';
+
+        const mkInp = (val, placeholder, field) => {
+            const inp = document.createElement('input');
+            inp.type = 'text'; inp.value = val; inp.placeholder = placeholder;
+            inp.style.cssText = 'width:100%;padding:3px 6px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:11px;box-sizing:border-box;outline:none;transition:border .15s;';
+            inp.addEventListener('focus', () => inp.style.borderColor = '#6366f1');
+            inp.addEventListener('blur',  () => inp.style.borderColor = '#334155');
+            inp.addEventListener('input', () => {
+                calcRules[i][field] = field === 'name' ? inp.value : (parseFloat(inp.value) || 0);
+                saveCalcRules();
+            });
+            return inp;
+        };
+
+        const del = document.createElement('button');
+        del.textContent = '✕';
+        del.style.cssText = 'width:26px;height:24px;background:transparent;border:1px solid #ef4444;border-radius:5px;color:#ef4444;font-size:10px;cursor:pointer;transition:all .15s;';
+        del.addEventListener('mouseenter', () => { del.style.background='#ef4444'; del.style.color='#fff'; });
+        del.addEventListener('mouseleave', () => { del.style.background='transparent'; del.style.color='#ef4444'; });
+        del.addEventListener('click', () => { calcRules.splice(i,1); saveCalcRules(); buildCalcRulesPanel(); });
+
+        const extraVal = rule.extra !== undefined ? (rule.extra >= 0 ? '+' + rule.extra : String(rule.extra)) : '0';
+        row.appendChild(mkInp(rule.name, 'Название', 'name'));
+        row.appendChild(mkInp(rule.percent, '%', 'percent'));
+        row.appendChild(mkInp(rule.round, 'Округл.', 'round'));
+        row.appendChild(mkInp(extraVal, '+/-0', 'extra'));
+        row.appendChild(del);
+        panel.appendChild(row);
+    });
+
+    _appendRulesPanelFooter(panel, 'calc');
+}
+
+// ─── Панель замен расписания ──────────────────────────────────────────────────
+function buildSchedulePanel() {
+    const panel = document.getElementById('scheduleRulesPanel');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'display:grid;grid-template-columns:100px 1fr 28px;gap:4px;margin-bottom:6px;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;';
+    hdr.innerHTML = '<span>Ключ</span><span>Значение (замена)</span><span></span>';
+    panel.appendChild(hdr);
+
+    Object.entries(scheduleReplacements).forEach(([key, val]) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:grid;grid-template-columns:100px 1fr 28px;gap:4px;margin-bottom:4px;align-items:center;';
+
+        const mkInp = (v, ph, onChange) => {
+            const inp = document.createElement('input');
+            inp.type = 'text'; inp.value = v; inp.placeholder = ph;
+            inp.style.cssText = 'width:100%;padding:3px 6px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:11px;box-sizing:border-box;outline:none;transition:border .15s;';
+            inp.addEventListener('focus', () => inp.style.borderColor = '#6366f1');
+            inp.addEventListener('blur',  () => inp.style.borderColor = '#334155');
+            inp.addEventListener('input', () => onChange(inp.value));
+            return inp;
+        };
+
+        const oldKey = key;
+        const keyInp = mkInp(key, 'ключ', newKey => {
+            if (newKey !== oldKey) {
+                const tmp = { ...scheduleReplacements };
+                delete tmp[oldKey];
+                tmp[newKey] = scheduleReplacements[oldKey];
+                scheduleReplacements = tmp;
+                saveScheduleReplacements();
+            }
+        });
+        const valInp = mkInp(val, 'замена', newVal => {
+            scheduleReplacements[key] = newVal;
+            saveScheduleReplacements();
+        });
+
+        const del = document.createElement('button');
+        del.textContent = '✕';
+        del.style.cssText = 'width:24px;height:24px;background:transparent;border:1px solid #ef4444;border-radius:5px;color:#ef4444;font-size:10px;cursor:pointer;transition:all .15s;flex-shrink:0;';
+        del.addEventListener('mouseenter', () => { del.style.background='#ef4444'; del.style.color='#fff'; });
+        del.addEventListener('mouseleave', () => { del.style.background='transparent'; del.style.color='#ef4444'; });
+        del.addEventListener('click', () => {
+            delete scheduleReplacements[key];
+            saveScheduleReplacements();
+            buildSchedulePanel();
+        });
+
+        row.appendChild(keyInp);
+        row.appendChild(valInp);
+        row.appendChild(del);
+        panel.appendChild(row);
+    });
+
+    _appendRulesPanelFooter(panel, 'schedule');
+}
+
+// Общий "подвал" панелей с кнопками + JSON-редактором
+function _appendRulesPanelFooter(panel, type) {
+    const isCalc = type === 'calc';
+    const jsonAreaId = isCalc ? 'calcRulesJsonArea' : 'scheduleJsonArea';
+
+    const addRow = document.createElement('div');
+    addRow.style.cssText = 'display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;';
+
+    const mkBtn = (label, css, onClick) => {
+        const b = document.createElement('button');
+        b.innerHTML = label; b.style.cssText = css;
+        b.addEventListener('mouseenter', () => b.style.opacity = '.8');
+        b.addEventListener('mouseleave', () => b.style.opacity = '1');
+        b.addEventListener('click', onClick);
+        return b;
+    };
+
+    addRow.appendChild(mkBtn('＋ Добавить',
+        'flex:1;padding:4px 8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:7px;color:#fff;font-size:11px;cursor:pointer;font-weight:600;',
+        () => {
+            if (isCalc) {
+                calcRules.push({ name: 'Новое', percent: 100, round: 1, extra: 0 });
+                saveCalcRules(); buildCalcRulesPanel();
+            } else {
+                scheduleReplacements['новый_ключ'] = 'Замена';
+                saveScheduleReplacements(); buildSchedulePanel();
+            }
         }
+    ));
+
+    addRow.appendChild(mkBtn('↺ Сброс',
+        'padding:4px 8px;background:#1e293b;border:1px solid #475569;border-radius:7px;color:#94a3b8;font-size:11px;cursor:pointer;',
+        () => {
+            if (!confirm('Сбросить к значениям по умолчанию?')) return;
+            if (isCalc) { calcRules = JSON.parse(JSON.stringify(DEFAULT_CALC_RULES)); saveCalcRules(); buildCalcRulesPanel(); }
+            else { scheduleReplacements = JSON.parse(JSON.stringify(DEFAULT_REPLACEMENTS)); saveScheduleReplacements(); buildSchedulePanel(); }
+        }
+    ));
+
+    addRow.appendChild(mkBtn('{ } JSON',
+        'padding:4px 8px;background:#1e293b;border:1px solid #475569;border-radius:7px;color:#94a3b8;font-size:11px;cursor:pointer;',
+        () => {
+            const ja = document.getElementById(jsonAreaId);
+            if (ja.style.display === 'none') {
+                ja.value = JSON.stringify(isCalc ? calcRules : scheduleReplacements, null, 2);
+                ja.style.display = 'block';
+            } else {
+                ja.style.display = 'none';
+            }
+        }
+    ));
+
+    panel.appendChild(addRow);
+
+    // JSON textarea
+    const ja = document.createElement('textarea');
+    ja.id = jsonAreaId;
+    ja.style.cssText = 'display:none;width:100%;height:110px;margin-top:7px;padding:7px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#a5f3fc;font-size:11px;font-family:monospace;box-sizing:border-box;resize:vertical;outline:none;';
+    ja.spellcheck = false;
+    ja.addEventListener('blur', () => {
+        try {
+            const parsed = JSON.parse(ja.value);
+            if (isCalc) { calcRules = parsed; saveCalcRules(); buildCalcRulesPanel(); }
+            else { scheduleReplacements = parsed; saveScheduleReplacements(); buildSchedulePanel(); }
+            ja.style.borderColor = '#22c55e';
+        } catch { ja.style.borderColor = '#ef4444'; }
+    });
+    panel.appendChild(ja);
+}
+
+// ─── Очистка текста ───────────────────────────────────────────────────────────
+function setupGlobalClearTextFunctionality() {
+    const saved = localStorage.getItem('clearTextEnabled');
+    if (saved !== null) {
+        clearTextEnabled = saved === 'true';
+        const cb = document.getElementById('clearTextCheckbox');
+        if (cb) cb.checked = clearTextEnabled;
+    }
+    document.getElementById('clearTextCheckbox')?.addEventListener('change', function () {
+        clearTextEnabled = this.checked;
+        localStorage.setItem('clearTextEnabled', clearTextEnabled);
+        updateClearTextButton();
+    });
+    document.addEventListener('keypress', e => {
+        if (e.key === 'Enter' && clearTextEnabled && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+            const ms = parseInt(document.getElementById('timeoutSlider')?.value || 500, 10);
+            setTimeout(() => { e.target.value = ''; }, ms);
+        }
+    });
+    updateClearTextButton();
+}
+
+function updateClearTextButton() {
+    const btn = document.getElementById('clearTextButton');
+    if (!btn) return;
+    if (clearTextEnabled) {
+        btn.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
+        btn.style.boxShadow  = '0 2px 8px #22c55e30';
+        btn.textContent = '🧹 Вкл';
+    } else {
+        btn.style.background = 'linear-gradient(135deg,#ef4444,#dc2626)';
+        btn.style.boxShadow  = '0 2px 8px #ef444430';
+        btn.textContent = '🧹 Выкл';
     }
 }
 
-// Создание интерфейса
+// ─── Диспетчер действий ───────────────────────────────────────────────────────
+function executeCurrentAction() {
+    switch (currentAction) {
+        case 'checkHatiko':          checkHatiko();              break;
+        case 'calculator':           calculateCredit();          break;
+        case 'calculator_reverse':   calculateReverse();         break;
+        case 'calculator_discount':  applyDiscountOrMarkup();    break;
+        case 'calculator_simple':    calculateSimple();          break;
+        default: addToChatHistory('system', 'Выберите действие', '⚠️');
+    }
+}
+
+// ─── Создание интерфейса ──────────────────────────────────────────────────────
 function createPriceCheckWindow() {
     if (!window.priceCheckContainer) {
+
+        const style = document.createElement('style');
+        style.textContent = `
+            #priceCheckContainer {
+                font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+                font-size: 13px;
+                color: #e2e8f0;
+            }
+            #priceCheckContainer *::-webkit-scrollbar { width: 4px; height: 4px; }
+            #priceCheckContainer *::-webkit-scrollbar-track { background: #0f172a; }
+            #priceCheckContainer *::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+            #priceCheckContainer *::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+
+            .mc-btn {
+                padding: 6px 10px; border: none; border-radius: 8px;
+                color: #fff; cursor: pointer; font-size: 12px; font-weight: 600;
+                transition: all .18s ease; white-space: nowrap; letter-spacing: .2px;
+                line-height: 1.3;
+            }
+            .mc-btn:hover  { transform: translateY(-1px); filter: brightness(1.15); }
+            .mc-btn:active { transform: translateY(0);    filter: brightness(.95);  }
+            .mc-btn-green  { background:linear-gradient(135deg,#22c55e,#16a34a); box-shadow:0 2px 8px #22c55e28; }
+            .mc-btn-blue   { background:linear-gradient(135deg,#3b82f6,#2563eb); box-shadow:0 2px 8px #3b82f628; }
+            .mc-btn-purple { background:linear-gradient(135deg,#a855f7,#7c3aed); box-shadow:0 2px 8px #a855f728; }
+            .mc-btn-orange { background:linear-gradient(135deg,#f97316,#ea580c); box-shadow:0 2px 8px #f9731628; }
+            .mc-btn-teal   { background:linear-gradient(135deg,#14b8a6,#0d9488); box-shadow:0 2px 8px #14b8a628; }
+            .mc-btn-indigo { background:linear-gradient(135deg,#6366f1,#4f46e5); box-shadow:0 2px 8px #6366f128; }
+            .mc-btn-slate  { background:linear-gradient(135deg,#475569,#334155); border:1px solid #475569; box-shadow:none; }
+            .mc-btn-active {
+                outline: 2px solid #fff !important;
+                outline-offset: 2px !important;
+                filter: brightness(1.15) !important;
+                transform: translateY(-1px) !important;
+            }
+            .mc-section-label {
+                font-size: 9px; font-weight: 700; color: #334155;
+                text-transform: uppercase; letter-spacing: .8px;
+                margin-bottom: 4px; padding-left: 2px;
+            }
+            .mc-panel {
+                background: #0f172a; border: 1px solid #1e293b;
+                border-radius: 12px; padding: 11px;
+                max-height: 340px; overflow-y: auto;
+            }
+            .mc-panel-title {
+                font-size: 10px; font-weight: 700; color: #6366f1;
+                text-transform: uppercase; letter-spacing: .7px;
+                margin-bottom: 10px;
+            }
+            #priceCheckInput {
+                width: 100%; padding: 8px 44px 8px 12px;
+                background: #1e293b; border: 1.5px solid #334155;
+                border-radius: 10px; color: #e2e8f0; font-size: 13px;
+                box-sizing: border-box; outline: none;
+                transition: border-color .2s, box-shadow .2s;
+            }
+            #priceCheckInput:focus {
+                border-color: #6366f1; box-shadow: 0 0 0 3px #6366f118;
+            }
+            #priceCheckInput::placeholder { color: #334155; }
+            #priceCheckResult {
+                flex: 1; width: 100%; resize: none;
+                background: #080e1a; border: 1.5px solid #1a2332;
+                border-radius: 10px; color: #64748b; font-size: 11.5px;
+                padding: 10px 12px; box-sizing: border-box; line-height: 1.65;
+                font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+                outline: none; transition: border-color .2s;
+                min-height: 180px;
+            }
+            #priceCheckResult:focus { border-color: #1e293b; color: #94a3b8; }
+        `;
+        document.head.appendChild(style);
+
         const container = document.createElement('div');
         container.id = 'priceCheckContainer';
         container.style.cssText = `
-            position: fixed; top: 10px; right: 10px; width: 400px; height: 500px;
-            background: #fff; border: 1px solid #ccc; border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 10px; display: none;
-            z-index: 9999; box-sizing: border-box; display: flex; flex-direction: column;
-            resize: vertical; overflow: auto;
+            position:fixed; top:14px; right:14px; width:430px;
+            min-height:540px; max-height:93vh;
+            background:linear-gradient(160deg,#192035 0%,#0d1422 100%);
+            border:1px solid #1e2d45;
+            border-radius:18px;
+            box-shadow:0 12px 48px rgba(0,0,0,.65), 0 0 0 1px #ffffff06;
+            padding:14px; display:none; z-index:99999;
+            box-sizing:border-box; flex-direction:column; gap:10px;
+            resize:both; overflow:auto;
         `;
 
         container.innerHTML = `
-            <div id="priceCheckHeader" style="font-size: 18px; font-weight: bold; margin-bottom: 10px; user-select: none; cursor: move;">
-                Мемный чат
-                <span id="priceCheckCloseButton" style="position: absolute; top: 10px; right: 10px; cursor: pointer;">&#10006;</span>
+            <!-- ── Шапка ── -->
+            <div id="priceCheckHeader" style="
+                display:flex;align-items:center;justify-content:space-between;
+                cursor:move;user-select:none;padding-bottom:11px;
+                border-bottom:1px solid #1a2840;
+            ">
+                <div style="display:flex;align-items:center;gap:9px;">
+                    <div style="
+                        width:34px;height:34px;border-radius:9px;flex-shrink:0;
+                        background:linear-gradient(135deg,#6366f1,#a855f7);
+                        display:flex;align-items:center;justify-content:center;
+                        font-size:17px;box-shadow:0 3px 10px #6366f138;
+                    ">🐱</div>
+                    <div>
+                        <div style="font-size:14px;font-weight:700;color:#e2e8f0;line-height:1.2;">Мемный чат</div>
+                        <div style="font-size:9.5px;color:#334155;letter-spacing:.6px;margin-top:1px;">v5.0.0</div>
+                    </div>
+                </div>
+                <button id="priceCheckCloseButton" style="
+                    width:29px;height:29px;border-radius:8px;border:none;
+                    background:#1a2535;color:#475569;font-size:13px;
+                    cursor:pointer;transition:all .18s;
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+                ">✕</button>
             </div>
 
-            <div style="margin-bottom: 10px;">
-                <input type="text" id="priceCheckInput" placeholder="Введите запрос..."
-                    style="width: 100%; padding: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box;">
+            <!-- ── Поле ввода ── -->
+            <div style="position:relative;">
+                <input type="text" id="priceCheckInput" placeholder="Артикул, товар или сумма…">
+                <span style="
+                    position:absolute;right:11px;top:50%;transform:translateY(-50%);
+                    font-size:9.5px;color:#283347;pointer-events:none;
+                ">Enter ↵</span>
             </div>
 
-            <textarea id="priceCheckResult"
-                style="flex: 1; width: 100%; resize: none; border-radius: 5px; border: 1px solid #ccc; padding: 5px; box-sizing: border-box; margin-bottom: 10px;"
-                readonly></textarea>
+            <!-- ── Лог ── -->
+            <textarea id="priceCheckResult" readonly spellcheck="false"></textarea>
 
-            <div id="priceCheckControls" style="display: flex; flex-wrap: wrap; gap: 5px;">
-                <!-- Кнопки типа 1 -->
-                <button id="hatikoButton" class="action-button" data-action="checkHatiko" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🐶 Hatiko</button>
-                <button id="calculatorAllButton" class="action-button" data-action="calculator_all" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 All</button>
-                <button id="calculatorBalakovoButton" class="action-button" data-action="calculator_balakovo" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Balakovo</button>
-                <button id="calculatorReverseButton" class="action-button" data-action="calculator_reverse" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🔄</button>
-                <button id="calculatorDiscountButton" class="action-button" data-action="calculator_discount" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🎉 Скидка</button>
-                <button id="calculatorSimpleButton" class="action-button" data-action="calculator_simple" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #4CAF50; color: white; cursor: pointer;">🧮 Простой</button>
-
-                <!-- Кнопки типа 2 -->
-                <button id="whoWorksTodayButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">👨‍💼 Сегодня</button>
-                <button id="whoWorksTomorrowButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">👨‍💼 Завтра</button>
-                <button id="copyButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">📋 Копировать</button>
-                <button id="clearChatButton" class="instant-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #2196F3; color: white; cursor: pointer;">🗑️ Очистить чат</button>
-
-                <!-- Кнопки типа 3 -->
-                <button id="clearTextButton" class="toggle-button" style="flex: 1; padding: 5px; border-radius: 5px; border: none; background-color: #f44336; color: white; cursor: pointer;">🧹 Выкл</button>
+            <!-- ── Группа 1: расчётные ── -->
+            <div>
+                <div class="mc-section-label">Поиск и расчёт</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                    <button class="mc-btn mc-btn-green"  data-action="checkHatiko">🐶 Hatiko</button>
+                    <button class="mc-btn mc-btn-indigo" data-action="calculator">🧮 Калькулятор</button>
+                    <button class="mc-btn mc-btn-purple" data-action="calculator_reverse">🔄 Реверс</button>
+                    <button class="mc-btn mc-btn-orange" data-action="calculator_discount">🎉 Скидка/+</button>
+                    <button class="mc-btn mc-btn-teal"   data-action="calculator_simple">∑ Простой</button>
+                </div>
             </div>
 
-            <div id="settingsPanel" style="display: none; margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 5px;">
-                <label style="display: block; margin-bottom: 5px;">
-                    <input type="checkbox" id="clearTextCheckbox"> Глобальная очистка текста после Enter
+            <!-- ── Группа 2: быстрые ── -->
+            <div>
+                <div class="mc-section-label">Быстрые действия</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                    <button id="whoWorksTodayButton"    class="mc-btn mc-btn-blue">👨‍💼 Сегодня</button>
+                    <button id="whoWorksTomorrowButton" class="mc-btn mc-btn-blue">📅 Завтра</button>
+                    <button id="copyButton"             class="mc-btn mc-btn-blue">📋 Копировать</button>
+                    <button id="clearChatButton"        class="mc-btn mc-btn-blue">🗑️ Чат</button>
+                </div>
+            </div>
+
+            <!-- ── Группа 3: настройки ── -->
+            <div>
+                <div class="mc-section-label">Настройки</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                    <button id="clearTextButton"    class="mc-btn mc-btn-orange">🧹 Выкл</button>
+                    <button id="calcSettingsBtn"    class="mc-btn mc-btn-slate">⚙️ Правила 🧮</button>
+                    <button id="scheduleSettingsBtn" class="mc-btn mc-btn-slate">⚙️ Замены 📅</button>
+                </div>
+            </div>
+
+            <!-- ── Панель правил калькулятора ── -->
+            <div id="calcSettingsPanel" class="mc-panel" style="display:none;">
+                <div class="mc-panel-title">⚙️ Правила калькулятора
+                    <span style="font-weight:400;color:#334155;text-transform:none;letter-spacing:0;margin-left:6px;">
+                        round(сумма × % ÷ 100 ÷ округл.) × округл. + доп.
+                    </span>
+                </div>
+                <div id="calcRulesPanel"></div>
+            </div>
+
+            <!-- ── Панель замен расписания ── -->
+            <div id="scheduleSettingsPanel" class="mc-panel" style="display:none;">
+                <div class="mc-panel-title">⚙️ Замены для расписания</div>
+                <div id="scheduleRulesPanel"></div>
+            </div>
+
+            <!-- ── Панель очистки текста ── -->
+            <div id="settingsPanel" class="mc-panel" style="display:none;max-height:none;">
+                <div class="mc-panel-title">⚙️ Настройки очистки</div>
+                <label style="display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:12px;margin-bottom:10px;cursor:pointer;">
+                    <input type="checkbox" id="clearTextCheckbox" style="accent-color:#6366f1;width:14px;height:14px;">
+                    Глобальная очистка текста после Enter
                 </label>
-                <label style="display: block;">
-                    Задержка очистки (мс):
-                    <input type="range" id="timeoutSlider" min="1" max="1000" value="500" style="width: 100%;">
-                    <span id="timeoutValue">500</span>
+                <label style="display:block;color:#94a3b8;font-size:12px;">
+                    Задержка: <span id="timeoutValue" style="color:#6366f1;font-weight:700;">500</span> мс
+                    <input type="range" id="timeoutSlider" min="1" max="2000" value="500"
+                        style="width:100%;margin-top:5px;accent-color:#6366f1;display:block;">
                 </label>
             </div>
         `;
 
         document.body.appendChild(container);
+        window.priceCheckContainer = container;
         setupEventListeners();
         setupGlobalClearTextFunctionality();
-        window.priceCheckContainer = container;
+        buildCalcRulesPanel();
+        buildSchedulePanel();
     }
 
     window.priceCheckContainer.style.display = 'flex';
     document.getElementById('priceCheckInput').focus();
-    // Автоматически активируем первую кнопку (Hatiko)
-    document.getElementById('hatikoButton').click();
+    document.querySelector('[data-action="checkHatiko"]').click();
 }
 
+// ─── Обработчики событий ──────────────────────────────────────────────────────
 function setupEventListeners() {
-    // Перетаскивание окна
+    const container = window.priceCheckContainer;
+
+    // Перетаскивание
     document.getElementById('priceCheckHeader').addEventListener('mousedown', startDrag);
 
-    // Обработчик Enter в поле ввода
-    document.getElementById('priceCheckInput').addEventListener('keypress', (event) => {
-        if (event.key === 'Enter' && currentAction) {
-            executeCurrentAction();
-        }
+    // Enter в поле ввода
+    document.getElementById('priceCheckInput').addEventListener('keypress', e => {
+        if (e.key === 'Enter' && currentAction) executeCurrentAction();
     });
 
-    // Кнопки типа 1 - переключаемые
-    document.querySelectorAll('.action-button').forEach(button => {
-        button.addEventListener('click', (e) => {
-            // Сбрасываем фон у всех кнопок типа 1
-            document.querySelectorAll('.action-button').forEach(btn => {
-                btn.style.backgroundColor = '#4CAF50';
-            });
-
-            // Устанавливаем голубой фон для активной кнопки
-            e.target.style.backgroundColor = '#87CEEB';
-            currentAction = e.target.dataset.action;
+    // Кнопки с data-action (переключаемые)
+    container.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', e => {
+            container.querySelectorAll('[data-action]').forEach(b => b.classList.remove('mc-btn-active'));
+            e.currentTarget.classList.add('mc-btn-active');
+            currentAction = e.currentTarget.dataset.action;
         });
     });
 
-    // Кнопки типа 2 - мгновенные
-    document.getElementById('whoWorksTodayButton').addEventListener('click', fetchWhoWorksToday);
+    // Быстрые кнопки
+    document.getElementById('whoWorksTodayButton').addEventListener('click',    fetchWhoWorksToday);
     document.getElementById('whoWorksTomorrowButton').addEventListener('click', fetchWhoWorksTomorrow);
-    document.getElementById('copyButton').addEventListener('click', copyText);
-    document.getElementById('clearChatButton').addEventListener('click', clearChat);
+    document.getElementById('copyButton').addEventListener('click',             copyText);
+    document.getElementById('clearChatButton').addEventListener('click',        clearChat);
 
-    // Кнопки типа 3 - переключатели
-    document.getElementById('clearTextButton').addEventListener('click', function() {
-        const settingsPanel = document.getElementById('settingsPanel');
-        settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+    // Кнопка очистки → панель настроек
+    document.getElementById('clearTextButton').addEventListener('click', () => {
+        togglePanel('settingsPanel');
     });
 
-    // Настройки
-    document.getElementById('timeoutSlider').addEventListener('input', (event) => {
-        document.getElementById('timeoutValue').textContent = event.target.value;
+    // Правила калькулятора
+    document.getElementById('calcSettingsBtn').addEventListener('click', () => {
+        const wasHidden = document.getElementById('calcSettingsPanel').style.display === 'none';
+        togglePanel('calcSettingsPanel');
+        if (wasHidden) buildCalcRulesPanel();
     });
 
-    // Закрытие окна
+    // Замены расписания
+    document.getElementById('scheduleSettingsBtn').addEventListener('click', () => {
+        const wasHidden = document.getElementById('scheduleSettingsPanel').style.display === 'none';
+        togglePanel('scheduleSettingsPanel');
+        if (wasHidden) buildSchedulePanel();
+    });
+
+    // Ползунок задержки
+    document.getElementById('timeoutSlider').addEventListener('input', e => {
+        document.getElementById('timeoutValue').textContent = e.target.value;
+    });
+
+    // Закрытие
     document.getElementById('priceCheckCloseButton').addEventListener('click', () => {
         window.priceCheckContainer.style.display = 'none';
     });
+
+    // Hover эффект кнопки закрытия
+    const closeBtn = document.getElementById('priceCheckCloseButton');
+    closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background='#ef4444'; closeBtn.style.color='#fff'; });
+    closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background='#1a2535'; closeBtn.style.color='#475569'; });
 }
 
-function executeCurrentAction() {
-    switch(currentAction) {
-        case 'checkHatiko':
-            checkHatiko();
-            break;
-        case 'calculator_all':
-        case 'calculator_balakovo':
-            calculateCredit();
-            break;
-        case 'calculator_reverse':
-            calculateReverse();
-            break;
-        case 'calculator_discount':
-            applyDiscount();
-            break;
-        case 'calculator_simple':
-            calculateSimple();
-            break;
-        default:
-            addToChatHistory('system', 'Выберите действие', '⚠️');
-    }
+// Открыть/закрыть одну панель (остальные закрываются)
+function togglePanel(id) {
+    const ids = ['settingsPanel', 'calcSettingsPanel', 'scheduleSettingsPanel'];
+    ids.forEach(pid => {
+        const el = document.getElementById(pid);
+        if (!el) return;
+        el.style.display = (pid === id && el.style.display === 'none') ? 'block' : 'none';
+    });
 }
 
-// Функция для закрытия окна чата
+// ─── Инициализация ────────────────────────────────────────────────────────────
 function closeChatWindow() {
-    if (window.priceCheckContainer) {
-        window.priceCheckContainer.style.display = 'none';
-    }
+    if (window.priceCheckContainer) window.priceCheckContainer.style.display = 'none';
 }
 
-// Инициализация
 function initialize() {
+    loadCalcRules();
+    loadScheduleReplacements();
     GM_registerMenuCommand('Открыть мемный чат', createPriceCheckWindow);
     GM_registerMenuCommand('Закрыть мемный чат', closeChatWindow);
-    loadRateConfigurations();
-    setInterval(loadRateConfigurations, UPDATE_INTERVAL);
-    console.log('Мемный чат инициализирован');
+    console.log('Мемный чат v5.0.0 инициализирован');
 }
 
 window.addEventListener('load', initialize);
-
