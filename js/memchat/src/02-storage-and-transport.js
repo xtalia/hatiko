@@ -31,6 +31,22 @@ function saveScheduleReplacements() {
     localStorage.setItem(storageKey('scheduleReplacements_v1'), JSON.stringify(scheduleReplacements));
 }
 
+function loadSelectedAction() {
+    try {
+        return localStorage.getItem(storageKey('selectedAction_v1')) || 'checkHatiko';
+    } catch {
+        return 'checkHatiko';
+    }
+}
+
+function saveSelectedAction(action) {
+    try {
+        localStorage.setItem(storageKey('selectedAction_v1'), action);
+    } catch (error) {
+        debugError('storage', 'Не удалось сохранить выбранный режим', error);
+    }
+}
+
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 function fetchServerData(url, onSuccess, onError) {
     debugLog('request', 'GET', url);

@@ -154,6 +154,22 @@ function saveScheduleReplacements() {
     localStorage.setItem(storageKey('scheduleReplacements_v1'), JSON.stringify(scheduleReplacements));
 }
 
+function loadSelectedAction() {
+    try {
+        return localStorage.getItem(storageKey('selectedAction_v1')) || 'checkHatiko';
+    } catch {
+        return 'checkHatiko';
+    }
+}
+
+function saveSelectedAction(action) {
+    try {
+        localStorage.setItem(storageKey('selectedAction_v1'), action);
+    } catch (error) {
+        debugError('storage', 'Не удалось сохранить выбранный режим', error);
+    }
+}
+
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 function fetchServerData(url, onSuccess, onError) {
     debugLog('request', 'GET', url);
@@ -976,7 +992,7 @@ function createPriceCheckWindow() {
 
     window.priceCheckContainer.style.display = 'flex';
     document.getElementById('priceCheckInput').focus();
-    document.querySelector('[data-action="checkHatiko"]').click();
+    restoreSelectedAction();
 }
 
 /* ===== 10-events-and-init.js ===== */
@@ -999,6 +1015,8 @@ function setupEventListeners() {
             container.querySelectorAll('[data-action]').forEach(b => b.classList.remove('mc-btn-active'));
             e.currentTarget.classList.add('mc-btn-active');
             currentAction = e.currentTarget.dataset.action;
+            saveSelectedAction(currentAction);
+            debugLog('action', 'selected', currentAction);
         });
     });
 
@@ -1044,6 +1062,13 @@ function setupEventListeners() {
 }
 
 // Открыть/закрыть одну панель (остальные закрываются)
+function restoreSelectedAction() {
+    const action = loadSelectedAction();
+    const button = document.querySelector(`[data-action="${action}"]`)
+        || document.querySelector('[data-action="checkHatiko"]');
+    if (button) button.click();
+}
+
 function togglePanel(id) {
     const ids = ['settingsPanel', 'calcSettingsPanel', 'scheduleSettingsPanel'];
     ids.forEach(pid => {

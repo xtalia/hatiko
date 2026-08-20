@@ -56,6 +56,26 @@ node js/memchat/build-memchat.js
 node --check js/memchat.user.js
 ```
 
+Для публикации можно использовать готовый PowerShell-скрипт:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\js\memchat\scripts\publish.ps1
+```
+
+Он собирает production userscript, проверяет синтаксис и `git diff --check`, делает commit и выполняет `git push origin main`.
+
+Перед публикацией можно указать сообщение коммита:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\js\memchat\scripts\publish.ps1 -Message "feat: add new memchat action"
+```
+
+Только собрать и проверить commit без push:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\js\memchat\scripts\publish.ps1 -SkipPush
+```
+
 Для отладки в Tampermonkey:
 
 1. Откройте DevTools страницы (`F12` или `Ctrl+Shift+I`).

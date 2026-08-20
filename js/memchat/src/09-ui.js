@@ -201,6 +201,6 @@ function createPriceCheckWindow() {
 
     window.priceCheckContainer.style.display = 'flex';
     document.getElementById('priceCheckInput').focus();
-    document.querySelector('[data-action="checkHatiko"]').click();
+    restoreSelectedAction();
 }
 

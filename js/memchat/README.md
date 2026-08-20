@@ -39,7 +39,19 @@ node --check js/memchat.user.js
 
 ## DEV-версия
 
-Тестовый файл:
+Для запуска локальной разработки есть скрипт:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\js\memchat\scripts\dev.ps1
+```
+
+Порт можно изменить:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\js\memchat\scripts\dev.ps1 -Port 8124
+```
+
+Тестовый userscript:
 
 ```text
 js/memchat/dev/memchat.dev.user.js
@@ -47,7 +59,7 @@ js/memchat/dev/memchat.dev.user.js
 
 Он подключает те же модули через `@require` с локального HTTP-сервера. Это позволяет быстро редактировать исходники и перезагружать DEV userscript без production-сборки.
 
-Запустить локальный сервер модулей из каталога исходников:
+Скрипт запускает локальную раздачу модулей из каталога исходников. Альтернативно вручную:
 
 ```bash
 cd js/memchat/src
@@ -57,6 +69,17 @@ python -m http.server 8123 --bind 127.0.0.1
 Затем установите `js/memchat/dev/memchat.dev.user.js` в Tampermonkey. Для `@require http://127.0.0.1:8123/...` Tampermonkey может потребовать разрешить локальные подключения в настройках.
 
 DEV-скрипт использует отдельные ключи localStorage с префиксом `memchat:dev:` и не должен перезаписывать настройки production.
+
+## Сохранение выбранного режима
+
+Последний выбранный режим (`Hatiko`, `Калькулятор`, `Реверс`, `Скидка/+` или `Простой`) сохраняется в `localStorage`:
+
+```text
+memchat:selectedAction_v1
+memchat:dev:selectedAction_v1
+```
+
+При следующем открытии окна userscript автоматически восстанавливает соответствующую активную кнопку. Если сохранённого или неизвестного режима нет, используется `Hatiko`.
 
 ## Ежедневный workflow
 
@@ -71,7 +94,15 @@ for f in js/memchat/src/*.js js/memchat/build-memchat.js; do node --check "$f"; 
 node --check js/memchat.user.js
 ```
 
-5. Проверить изменения и отправить оба слоя — исходники и результат сборки:
+5. Либо выполнить готовый скрипт публикации:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\js\memchat\scripts\publish.ps1
+```
+
+Он сам соберёт production, проверит файлы, сделает commit и push. Ручной вариант:
+
+6. Проверить изменения и отправить оба слоя — исходники и результат сборки:
 
 ```bash
 git add js/memchat js/memchat.user.js README.md

@@ -16,6 +16,8 @@ function setupEventListeners() {
             container.querySelectorAll('[data-action]').forEach(b => b.classList.remove('mc-btn-active'));
             e.currentTarget.classList.add('mc-btn-active');
             currentAction = e.currentTarget.dataset.action;
+            saveSelectedAction(currentAction);
+            debugLog('action', 'selected', currentAction);
         });
     });
 
@@ -61,6 +63,13 @@ function setupEventListeners() {
 }
 
 // Открыть/закрыть одну панель (остальные закрываются)
+function restoreSelectedAction() {
+    const action = loadSelectedAction();
+    const button = document.querySelector(`[data-action="${action}"]`)
+        || document.querySelector('[data-action="checkHatiko"]');
+    if (button) button.click();
+}
+
 function togglePanel(id) {
     const ids = ['settingsPanel', 'calcSettingsPanel', 'scheduleSettingsPanel'];
     ids.forEach(pid => {
