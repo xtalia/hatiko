@@ -47,6 +47,22 @@ function saveSelectedAction(action) {
     }
 }
 
+function loadShowHatikoLinks() {
+    try {
+        return localStorage.getItem(storageKey('showHatikoLinks_v1')) === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function saveShowHatikoLinks(enabled) {
+    try {
+        localStorage.setItem(storageKey('showHatikoLinks_v1'), String(enabled));
+    } catch (error) {
+        debugError('storage', 'Не удалось сохранить настройку ссылок Hatiko', error);
+    }
+}
+
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 function fetchServerData(url, onSuccess, onError) {
     debugLog('request', 'GET', url);

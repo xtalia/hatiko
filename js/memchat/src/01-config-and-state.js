@@ -64,6 +64,8 @@ let chatHistory   = [];
 let clearTextEnabled = false;
 let calcRules     = [];
 let scheduleReplacements = {};
+let currentHatikoPathname = '';
+let lastHatikoResults = [];
 
 const DEBUG_STORAGE_KEY = 'memchat:debug';
 

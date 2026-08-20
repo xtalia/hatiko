@@ -81,6 +81,8 @@ let chatHistory   = [];
 let clearTextEnabled = false;
 let calcRules     = [];
 let scheduleReplacements = {};
+let currentHatikoPathname = '';
+let lastHatikoResults = [];
 
 const DEBUG_STORAGE_KEY = 'memchat:debug';
 
@@ -170,6 +172,22 @@ function saveSelectedAction(action) {
     }
 }
 
+function loadShowHatikoLinks() {
+    try {
+        return localStorage.getItem(storageKey('showHatikoLinks_v1')) === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function saveShowHatikoLinks(enabled) {
+    try {
+        localStorage.setItem(storageKey('showHatikoLinks_v1'), String(enabled));
+    } catch (error) {
+        debugError('storage', 'Не удалось сохранить настройку ссылок Hatiko', error);
+    }
+}
+
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 function fetchServerData(url, onSuccess, onError) {
     debugLog('request', 'GET', url);
@@ -254,6 +272,50 @@ function parseSearchPage(html, baseUrl) {
     return { title, price, productUrl, pathname };
 }
 
+function parseSearchResults(html, baseUrl) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const results = [];
+    const seen = new Set();
+
+    doc.querySelectorAll('a.s-product-header').forEach(product => {
+        const relativeLink = product.getAttribute('href') || '';
+        if (!relativeLink) return;
+
+        const pathname = new URL(relativeLink, baseUrl).pathname;
+        if (!pathname || seen.has(pathname)) return;
+        seen.add(pathname);
+
+        results.push({
+            title: (product.getAttribute('title') || product.textContent || '').trim(),
+            pathname
+        });
+    });
+
+    return results;
+}
+
+function parseProductPrice(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const priceEl = doc.querySelector('span.s-price span.price-wrapper span.price')
+                 || doc.querySelector('.s-price span.price')
+                 || doc.querySelector('span.price-wrapper span.price');
+    if (!priceEl) return '—';
+    const value = priceEl.textContent.replace(/\s+/g, ' ').trim();
+    return value ? `${value} ₽` : '—';
+}
+
+function formatHatikoResult(title, prices, pathname) {
+    currentHatikoPathname = pathname;
+    const lines = [`🧭 ${title}`, ''];
+    BASE_URLS.forEach((baseUrl, i) => {
+        lines.push(`🪙${CITY_ICONS[i]} ${prices[i] || '—'}`);
+    });
+    updateHatikoLinksPanel(pathname);
+    lines.push('', 'Сможем? Актуальная цена?');
+    return lines.join('\n');
+}
 
 
 /**
@@ -284,6 +346,7 @@ function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (!query) return;
     addToChatHistory('user', query, '🐶 Hatiko');
+    updateHatikoStatus('Ищу товары…');
 
     // Шаг 1: ищем товар через поиск Саратова
     const searchUrl = `${BASE_URLS[0]}/search/?query=${encodeURIComponent(query)}`;
@@ -291,64 +354,81 @@ function checkHatiko() {
     fetchServerData(
         searchUrl,
         (searchResp) => {
-            const parsed = parseSearchPage(searchResp.responseText, BASE_URLS[0]);
+            const products = parseSearchResults(searchResp.responseText, BASE_URLS[0]);
 
-            if (!parsed || !parsed.pathname) {
+            if (!products.length) {
+                updateHatikoStatus('Товары не найдены');
                 addToChatHistory('bot', 'Товар не найден', '🐶 Hatiko');
                 return;
             }
 
-            const title    = parsed.title;
-            const pathname = parsed.pathname;
+            updateHatikoStatus(`Найдено товаров: ${products.length}. Получаю цены…`);
 
-            // Шаг 2: для каждого города заходим на страницу товара
-            let prices            = new Array(BASE_URLS.length).fill('—');
-            let requestsCompleted = 0;
+            const results = new Array(products.length);
+            let completed = 0;
 
-            BASE_URLS.forEach((baseUrl, idx) => {
-                const productUrl = `${baseUrl}${pathname}`;
+            products.forEach((product, index) => {
+                checkHatikoProduct(product, result => {
+                    results[index] = result;
+                    completed++;
+                    if (completed !== products.length) return;
 
-                fetchServerData(
-                    productUrl,
-                    (productResp) => {
-                        const doc = new DOMParser().parseFromString(productResp.responseText, 'text/html');
-
-                        // span.s-price — это реальная цена, span.s-compare-price — зачёркнутая (0 ₽), её игнорируем
-                        const priceEl = doc.querySelector('span.s-price span.price-wrapper span.price')
-                                     || doc.querySelector('span.price-wrapper span.price')
-                                     || doc.querySelector('span.price');
-
-                        prices[idx] = priceEl
-                            ? priceEl.textContent.replace(/\s+/g, ' ').trim() + ' ₽'
-                            : '—';
-
-                        requestsCompleted++;
-                        if (requestsCompleted === BASE_URLS.length) finish();
-                    },
-                    () => {
-                        prices[idx] = '—';
-                        requestsCompleted++;
-                        if (requestsCompleted === BASE_URLS.length) finish();
+                    if (results.length === 1) {
+                        lastHatikoResults = results;
+                        updateHatikoStatus('Готово');
+                        addToChatHistory('bot', results[0].message, '🐶 Hatiko');
+                    } else {
+                        lastHatikoResults = results;
+                        updateHatikoStatus(`Готово: ${results.length} товара. Можно выбрать другой.`);
+                        openHatikoProductPicker(results);
                     }
-                );
+                });
             });
-
-            function finish() {
-                let msg = `🧭 ${title}\n\n`;
-                BASE_URLS.forEach((baseUrl, i) => {
-                    msg += `🪙${CITY_ICONS[i]} ${prices[i]}\n`;
-                });
-                msg += '\n';
-                BASE_URLS.forEach((baseUrl, i) => {
-                    msg += `🌐${CITY_ICONS[i]}: ${baseUrl}${pathname}\n`;
-                });
-                addToChatHistory('bot', msg.trim(), '🐶 Hatiko');
-            }
         },
         (err) => {
+            updateHatikoStatus('Ошибка поиска');
             addToChatHistory('bot', 'Ошибка поиска: ' + err, '🐶 Hatiko');
         }
     );
+}
+
+function checkHatikoProduct(product, onComplete) {
+    const { title, pathname } = product;
+    currentHatikoPathname = pathname;
+    const prices = new Array(BASE_URLS.length).fill('—');
+    let requestsCompleted = 0;
+
+    BASE_URLS.forEach((baseUrl, idx) => {
+        fetchServerData(
+            `${baseUrl}${pathname}`,
+            productResp => {
+                prices[idx] = parseProductPrice(productResp.responseText);
+                requestsCompleted++;
+                updateHatikoStatus(`Получаю цены: ${requestsCompleted}/${BASE_URLS.length} для «${title}»`);
+                if (requestsCompleted === BASE_URLS.length) finish();
+            },
+            () => {
+                requestsCompleted++;
+                updateHatikoStatus(`Получаю цены: ${requestsCompleted}/${BASE_URLS.length} для «${title}»`);
+                if (requestsCompleted === BASE_URLS.length) finish();
+            }
+        );
+    });
+
+    function finish() {
+        // Если городской сайт не отдал отдельную цену, используем цену
+        // Саратова: у городов часто общий каталог и прайс.
+        const saratovPrice = prices[0];
+        const normalizedPrices = saratovPrice !== '—'
+            ? prices.map(price => price === '—' ? saratovPrice : price)
+            : prices;
+        onComplete({
+            title,
+            pathname,
+            prices: normalizedPrices,
+            message: formatHatikoResult(title, normalizedPrices, pathname)
+        });
+    }
 }
 
 /* ===== 05-calculator.js ===== */
@@ -862,6 +942,13 @@ function createPriceCheckWindow() {
                 min-height: 180px;
             }
             #priceCheckResult:focus { border-color: #1e293b; color: #94a3b8; }
+            #hatikoRequestStatus { color:#94a3b8; font-size:10px; min-height:14px; }
+            .mc-links-panel {
+                display:none; max-height:150px; overflow-y:auto;
+                background:#080e1a; border:1px solid #1a2332;
+                border-radius:10px; padding:8px 10px; font-size:11px;
+            }
+            .mc-links-panel a { display:block; color:#93c5fd; margin:4px 0; word-break:break-all; }
         `;
         document.head.appendChild(style);
 
@@ -917,6 +1004,9 @@ function createPriceCheckWindow() {
 
             <!-- ── Лог ── -->
             <textarea id="priceCheckResult" readonly spellcheck="false"></textarea>
+            <div id="hatikoRequestStatus"></div>
+            <button id="hatikoReopenPickerButton" type="button" style="display:none;padding:5px 8px;border:1px solid #475569;border-radius:7px;background:#1e293b;color:#cbd5e1;cursor:pointer;">↶ Выбрать другой товар</button>
+            <div id="hatikoLinksPanel" class="mc-links-panel"></div>
 
             <!-- ── Группа 1: расчётные ── -->
             <div>
@@ -979,6 +1069,10 @@ function createPriceCheckWindow() {
                     <input type="range" id="timeoutSlider" min="1" max="2000" value="500"
                         style="width:100%;margin-top:5px;accent-color:#6366f1;display:block;">
                 </label>
+                <label style="display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:12px;margin-top:10px;cursor:pointer;">
+                    <input type="checkbox" id="showHatikoLinksCheckbox" style="accent-color:#6366f1;width:14px;height:14px;">
+                    Показывать ссылки Hatiko
+                </label>
             </div>
         `;
 
@@ -986,6 +1080,8 @@ function createPriceCheckWindow() {
         window.priceCheckContainer = container;
         setupEventListeners();
         setupGlobalClearTextFunctionality();
+        setupHatikoLinksSetting();
+        document.getElementById('hatikoReopenPickerButton').addEventListener('click', reopenHatikoProductPicker);
         buildCalcRulesPanel();
         buildSchedulePanel();
     }
@@ -993,6 +1089,163 @@ function createPriceCheckWindow() {
     window.priceCheckContainer.style.display = 'flex';
     document.getElementById('priceCheckInput').focus();
     restoreSelectedAction();
+}
+
+function updateHatikoStatus(message) {
+    const status = document.getElementById('hatikoRequestStatus');
+    if (status) status.textContent = `🐶 ${message}`;
+    debugLog('hatiko-status', message);
+}
+
+function updateHatikoLinksPanel(pathname) {
+    const panel = document.getElementById('hatikoLinksPanel');
+    if (!panel) return;
+    panel.innerHTML = '';
+    if (!loadShowHatikoLinks() || !pathname) {
+        panel.style.display = 'none';
+        return;
+    }
+    BASE_URLS.forEach((baseUrl, i) => {
+        const link = document.createElement('a');
+        link.href = `${baseUrl}${pathname}`;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = `🌐${CITY_ICONS[i]} ${CITY_NAMES[i]}: ${link.href}`;
+        panel.appendChild(link);
+    });
+    panel.style.display = 'block';
+}
+
+function setupHatikoLinksSetting() {
+    const checkbox = document.getElementById('showHatikoLinksCheckbox');
+    if (!checkbox) return;
+    checkbox.checked = loadShowHatikoLinks();
+    checkbox.addEventListener('change', () => {
+        saveShowHatikoLinks(checkbox.checked);
+        updateHatikoLinksPanel(currentHatikoPathname);
+    });
+}
+
+function closeHatikoProductPicker() {
+    document.getElementById('hatikoProductPicker')?.remove();
+}
+
+function reopenHatikoProductPicker() {
+    if (lastHatikoResults.length > 1) openHatikoProductPicker(lastHatikoResults);
+}
+
+function copyHatikoText(text) {
+    const fallback = () => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+    };
+
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).catch(fallback);
+    } else {
+        fallback();
+    }
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>'\"]/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;'
+    }[char]));
+}
+
+function openHatikoProductPicker(results) {
+    closeHatikoProductPicker();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'hatikoProductPicker';
+    overlay.style.cssText = `
+        position:fixed;inset:0;z-index:100000;
+        display:flex;align-items:center;justify-content:center;
+        padding:20px;background:rgba(2,6,23,.72);
+    `;
+
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        width:min(720px, calc(100vw - 40px));max-height:80vh;overflow:auto;
+        padding:16px;background:#111827;border:1px solid #334155;
+        border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.6);
+        color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;';
+    const title = document.createElement('strong');
+    title.textContent = '🐶 Выберите товар для копирования';
+    title.style.fontSize = '15px';
+    header.appendChild(title);
+
+    const close = document.createElement('button');
+    close.textContent = '✕';
+    close.style.cssText = 'border:0;border-radius:7px;padding:6px 9px;background:#334155;color:#e2e8f0;cursor:pointer;';
+    close.addEventListener('click', closeHatikoProductPicker);
+    header.appendChild(close);
+    modal.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;';
+
+    results.forEach(result => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.style.cssText = `
+            min-height:130px;padding:12px;text-align:left;cursor:pointer;
+            border:1px solid #334155;border-radius:12px;background:#1e293b;color:#e2e8f0;
+            transition:transform .15s,border-color .15s,background .15s;
+        `;
+        const cardTitle = document.createElement('strong');
+        cardTitle.textContent = result.title;
+        cardTitle.style.cssText = 'display:block;margin-bottom:8px;';
+        card.appendChild(cardTitle);
+        const prices = document.createElement('span');
+        prices.style.cssText = 'display:block;color:#a5b4fc;font-size:12px;line-height:1.5;white-space:pre-line;';
+        prices.textContent = result.prices.map((price, i) => `${CITY_NAMES[i]}: ${price}`).join('\n');
+        card.appendChild(prices);
+        card.addEventListener('mouseenter', () => { card.style.borderColor = '#818cf8'; card.style.transform = 'translateY(-2px)'; });
+        card.addEventListener('mouseleave', () => { card.style.borderColor = '#334155'; card.style.transform = 'none'; });
+        card.addEventListener('click', () => {
+            copyHatikoText(result.message);
+            addToChatHistory('bot', result.message, '🐶 Hatiko');
+            addToChatHistory('system', 'Ответ выбранного товара скопирован', '📋');
+            closeHatikoProductPicker();
+            const reopenButton = document.getElementById('hatikoReopenPickerButton');
+            if (reopenButton) reopenButton.style.display = 'block';
+        });
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'min-width:0;';
+        wrapper.appendChild(card);
+
+        const links = document.createElement('div');
+        links.style.cssText = 'margin-top:5px;font-size:10px;line-height:1.5;';
+        BASE_URLS.forEach((baseUrl, i) => {
+            const link = document.createElement('a');
+            link.href = `${baseUrl}${result.pathname}`;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = `${CITY_ICONS[i]} ${CITY_NAMES[i]}`;
+            link.style.cssText = 'color:#93c5fd;margin-right:7px;';
+            links.appendChild(link);
+        });
+        wrapper.appendChild(links);
+        grid.appendChild(wrapper);
+    });
+
+    modal.appendChild(grid);
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeHatikoProductPicker();
+    });
+    document.body.appendChild(overlay);
 }
 
 /* ===== 10-events-and-init.js ===== */
