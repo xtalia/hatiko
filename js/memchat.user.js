@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      5.3.0
+// @version      5.4.0
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -17,6 +17,8 @@
 /* ===== 01-config-and-state.js ===== */
 
 'use strict';
+
+const MEMCHAT_VERSION = '5.3.0';
 
 // ─── Константы ───────────────────────────────────────────────────────────────
 const BASE_URLS = [
@@ -85,6 +87,7 @@ let scheduleReplacements = {};
 let currentHatikoPathname = '';
 let lastHatikoResults = [];
 let hatikoSearchMode = 'auto';
+let activeRequestId = 0;
 
 const DEBUG_STORAGE_KEY = 'memchat:debug';
 
@@ -203,16 +206,72 @@ function saveHatikoSearchMode(mode) {
     localStorage.setItem(storageKey('hatikoSearchMode_v1'), mode);
 }
 
+function panelCsrfStorageKey() {
+    return storageKey('panelCsrf_v1');
+}
+
+function loadPanelCsrf() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(panelCsrfStorageKey()) || 'null');
+        if (!saved?.token || !saved?.savedAt || Date.now() - saved.savedAt > 30 * 60 * 1000) return '';
+        return saved.token;
+    } catch { return ''; }
+}
+
+function savePanelCsrf(token) {
+    if (!token) return;
+    try { localStorage.setItem(panelCsrfStorageKey(), JSON.stringify({ token, savedAt: Date.now() })); }
+    catch (error) { debugError('storage', 'Не удалось сохранить CSRF Panel', error); }
+}
+
+function clearPanelCsrf() {
+    try { localStorage.removeItem(panelCsrfStorageKey()); } catch { /* storage unavailable */ }
+}
+
+function ensurePanelCsrf(onSuccess, onError) {
+    const cached = loadPanelCsrf();
+    if (cached) { onSuccess(cached); return; }
+    panelRequest('/search', {}, response => {
+        const token = parsePanelCsrf(response.responseText);
+        if (!token) {
+            clearPanelCsrf();
+            onError(new Error('Panel: нет авторизации. Войдите в panel.hatiko.ru.'));
+            return;
+        }
+        savePanelCsrf(token);
+        onSuccess(token);
+    }, onError);
+}
+
 function panelRequest(path, options, onSuccess, onError) {
     GM_xmlhttpRequest({
         method: options?.method || 'GET',
         url: `https://panel.hatiko.ru${path}`,
-        headers: { Accept: 'application/json, text/html;q=0.9', ...(options?.headers || {}) },
+        headers: {
+            Accept: 'application/json, text/html;q=0.9',
+            Referer: 'https://panel.hatiko.ru/search',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(options?.headers || {})
+        },
         data: options?.data,
         timeout: 30000,
-        onload: response => response.status >= 200 && response.status < 300
-            ? onSuccess(response)
-            : onError(new Error(`Panel HTTP ${response.status}`), response),
+        anonymous: false,
+        onload: response => {
+            const contentType = response.responseHeaders?.match(/content-type:\s*([^\r\n]+)/i)?.[1] || '';
+            const raw = response.responseText || '';
+            const isHtml = /^\s*<html/i.test(raw) || /noindex, noarchive|ajaxload\.info|gorizontal-vertikal/i.test(raw);
+            debugLog('panel-response', { path, status: response.status, contentType, isHtml });
+            if (response.status >= 200 && response.status < 300 && !isHtml) {
+                onSuccess(response);
+            } else if (isHtml) {
+                const login = /\/login|вход|авторизац/i.test(raw);
+                onError(new Error(login
+                    ? 'Panel: нет авторизации. Войдите в panel.hatiko.ru.'
+                    : 'Panel: вернула HTML вместо JSON. Проверь авторизацию Panel.'), response);
+            } else {
+                onError(new Error(`Panel HTTP ${response.status}`), response);
+            }
+        },
         ontimeout: () => onError(new Error('Panel: таймаут запроса')),
         onerror: error => onError(new Error(`Panel: ошибка сети ${error}`))
     });
@@ -225,26 +284,65 @@ function parsePanelCsrf(html) {
     return input ? input[1] : '';
 }
 
+function parsePanelJson(response) {
+    const raw = String(response.responseText || response.response || '')
+        .replace(/^\uFEFF/, '')
+        .trim();
+    if (!raw) throw new Error('Panel: пустой ответ');
+    try {
+        return JSON.parse(raw);
+    } catch (error) {
+        debugError('panel-json', {
+            status: response.status,
+            contentType: response.responseHeaders?.match(/content-type:\s*([^\\r\\n]+)/i)?.[1] || '',
+            preview: raw.slice(0, 160)
+        });
+        throw new Error('Panel: некорректный JSON-ответ');
+    }
+}
+
 function panelSearch(query, onSuccess, onError) {
-    panelRequest('/search', {}, pageResponse => {
-        const csrf = parsePanelCsrf(pageResponse.responseText);
-        if (!csrf) { onError(new Error('Panel: не найден CSRF-токен. Возможно, нужна авторизация.')); return; }
-        panelRequest('/api/search', {
+    ensurePanelCsrf(csrf => {
+        const request = () => panelRequest('/api/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
             data: JSON.stringify({ search_type: 'article', query: String(query).trim(), cities_filter: [], stores_filter: [], show_external_code: true })
         }, response => {
-            try { onSuccess(JSON.parse(response.responseText)); }
-            catch { onError(new Error('Panel: некорректный JSON-ответ')); }
-        }, onError);
+            try { onSuccess(parsePanelJson(response)); }
+            catch (error) { onError(error); }
+        }, (error, response) => {
+            if (response?.status === 419 || response?.status === 401 || response?.status === 403) {
+                clearPanelCsrf();
+                onError(new Error('Panel: авторизация истекла. Войдите в panel.hatiko.ru.'));
+                return;
+            }
+            onError(error);
+        });
+        request();
     }, onError);
 }
 
 function panelCheckBonuses(phone, onSuccess, onError) {
-    const normalized = String(phone || '').replace(/\\D/g, '');
-    panelRequest(`/api/bonuses/check/${encodeURIComponent(Number(normalized))}`, {}, response => {
-        try { onSuccess(JSON.parse(response.responseText)); }
-        catch { onError(new Error('Panel: некорректный JSON-ответ')); }
+    const normalized = String(phone || '').replace(/\D/g, '');
+    if (!normalized) {
+        onError(new Error('Panel: введите номер телефона'));
+        return;
+    }
+    ensurePanelCsrf(csrf => {
+        const request = () => panelRequest(`/api/bonuses/check/${encodeURIComponent(Number(normalized))}`, {
+            headers: { 'X-CSRF-TOKEN': csrf }
+        }, response => {
+            try { onSuccess(parsePanelJson(response)); }
+            catch (error) { onError(error); }
+        }, (error, response) => {
+            if (response?.status === 419 || response?.status === 401 || response?.status === 403) {
+                clearPanelCsrf();
+                onError(new Error('Panel: авторизация истекла. Войдите в panel.hatiko.ru.'));
+                return;
+            }
+            onError(error);
+        });
+        request();
     }, onError);
 }
 
@@ -298,6 +396,14 @@ function clearChat() {
     if (ta) ta.value = '';
     chatHistory = [];
     addToChatHistory('system', 'Чат очищен', '🧹');
+}
+
+function clearResultForNewRequest() {
+    const ta = document.getElementById('priceCheckResult');
+    if (ta) ta.value = '';
+    document.getElementById('hatikoLinksPanel')?.replaceChildren();
+    document.getElementById('hatikoLinksPanel')?.style.setProperty('display', 'none');
+    document.getElementById('hatikoReopenPickerButton')?.style.setProperty('display', 'none');
 }
 
 /* ===== 04-hatiko.js ===== */
@@ -405,6 +511,8 @@ function parseProductPage(html) {
 function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (!query) return;
+    const requestId = ++activeRequestId;
+    clearResultForNewRequest();
     addToChatHistory('user', query, '🐶 Hatiko');
     if (hatikoSearchMode === 'panel' || (hatikoSearchMode === 'auto' && /^\d+$/.test(query))) {
         updateHatikoStatus('Проверяю Panel Hatiko…');
@@ -415,20 +523,20 @@ function checkHatiko() {
                 addToChatHistory('bot', message, '🏪 Panel');
             } else if (hatikoSearchMode === 'auto') {
                 updateHatikoStatus('Panel не нашёл, переключаюсь на Hatiko…');
-                checkHatikoWebsite(query);
+                checkHatikoWebsite(query, requestId);
             } else addToChatHistory('bot', 'Panel: товар не найден', '🏪 Panel');
         }, error => {
             if (hatikoSearchMode === 'auto') {
                 updateHatikoStatus('Panel недоступна, переключаюсь на Hatiko…');
-                checkHatikoWebsite(query);
+                checkHatikoWebsite(query, requestId);
             } else addToChatHistory('bot', error.message, '🏪 Panel');
         });
         return;
     }
-    checkHatikoWebsite(query);
+    checkHatikoWebsite(query, requestId);
 }
 
-function checkHatikoWebsite(query) {
+function checkHatikoWebsite(query, requestId) {
     updateHatikoStatus('Ищу товары…');
 
     // Шаг 1: ищем товар через поиск Саратова
@@ -437,6 +545,7 @@ function checkHatikoWebsite(query) {
     fetchServerData(
         searchUrl,
         (searchResp) => {
+            if (requestId !== activeRequestId) return;
             const products = parseSearchResults(searchResp.responseText, BASE_URLS[0]);
 
             if (!products.length) {
@@ -452,6 +561,7 @@ function checkHatikoWebsite(query) {
 
             products.forEach((product, index) => {
                 checkHatikoProduct(product, result => {
+                    if (requestId !== activeRequestId) return;
                     results[index] = result;
                     completed++;
                     if (completed !== products.length) return;
@@ -497,10 +607,11 @@ function checkHatikoBonuses() {
     updateHatikoStatus('Проверяю бонусы в Panel…');
     panelCheckBonuses(phone, data => {
         updateHatikoStatus('Бонусы: готово');
+        const bonus = data.bonus ?? data.bonuses ?? data.affiliate_bonus ?? 0;
         addToChatHistory('bot', [
             `Телефон: ${data.phone || phone}`,
-            `Клиент: ${data.name || '—'}`,
-            `Бонусы: ${Math.round(Number(data.bonus || 0))}`
+            `Клиент: ${data.name || data.customer_name || '—'}`,
+            `Бонусы: ${Math.round(Number(bonus))}`
         ].join('\n'), '🎁 Бонусы');
     }, error => {
         updateHatikoStatus('Ошибка проверки бонусов');
@@ -619,7 +730,7 @@ function applyDiscountOrMarkup() {
     }
 
     const result = op === '-' ? orig - diff : orig + diff;
-    const pct    = Math.abs(diff / orig * 100).toFixed(2);
+    const pct    = Math.abs(diff / orig * 100).toFixed(10);
     const label  = op === '-' ? '🎉 Скидка' : '📈 Наценка';
     const verb   = op === '-' ? 'Скидка'    : 'Наценка';
 
@@ -893,7 +1004,7 @@ function _appendRulesPanelFooter(panel, type) {
     ));
 
     addRow.appendChild(mkBtn('↺ Сброс',
-        'padding:4px 8px;background:#1e293b;border:1px solid #475569;border-radius:7px;color:#94a3b8;font-size:11px;cursor:pointer;',
+        'padding:4px 8px;background:#ffffff;border:1px solid #cbd5e1;border-radius:7px;color:#475569;font-size:11px;cursor:pointer;',
         () => {
             if (!confirm('Сбросить к значениям по умолчанию?')) return;
             if (isCalc) { calcRules = JSON.parse(JSON.stringify(DEFAULT_CALC_RULES)); saveCalcRules(); buildCalcRulesPanel(); }
@@ -902,7 +1013,7 @@ function _appendRulesPanelFooter(panel, type) {
     ));
 
     addRow.appendChild(mkBtn('{ } JSON',
-        'padding:4px 8px;background:#1e293b;border:1px solid #475569;border-radius:7px;color:#94a3b8;font-size:11px;cursor:pointer;',
+        'padding:4px 8px;background:#ffffff;border:1px solid #cbd5e1;border-radius:7px;color:#475569;font-size:11px;cursor:pointer;',
         () => {
             const ja = document.getElementById(jsonAreaId);
             if (ja.style.display === 'none') {
@@ -919,7 +1030,7 @@ function _appendRulesPanelFooter(panel, type) {
     // JSON textarea
     const ja = document.createElement('textarea');
     ja.id = jsonAreaId;
-    ja.style.cssText = 'display:none;width:100%;height:110px;margin-top:7px;padding:7px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#a5f3fc;font-size:11px;font-family:monospace;box-sizing:border-box;resize:vertical;outline:none;';
+    ja.style.cssText = 'display:none;width:100%;height:110px;margin-top:7px;padding:7px;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;color:#334155;font-size:11px;font-family:monospace;box-sizing:border-box;resize:vertical;outline:none;';
     ja.spellcheck = false;
     ja.addEventListener('blur', () => {
         try {
@@ -995,11 +1106,11 @@ function createPriceCheckWindow() {
             #priceCheckContainer {
                 font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
                 font-size: 13px;
-                color: #e2e8f0;
+                color: #1f2937;
             }
             #priceCheckContainer *::-webkit-scrollbar { width: 4px; height: 4px; }
-            #priceCheckContainer *::-webkit-scrollbar-track { background: #0f172a; }
-            #priceCheckContainer *::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+            #priceCheckContainer *::-webkit-scrollbar-track { background: #f1f5f9; }
+            #priceCheckContainer *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
             #priceCheckContainer *::-webkit-scrollbar-thumb:hover { background: #6366f1; }
 
             .mc-btn {
@@ -1024,48 +1135,59 @@ function createPriceCheckWindow() {
                 transform: translateY(-1px) !important;
             }
             .mc-section-label {
-                font-size: 9px; font-weight: 700; color: #334155;
+                font-size: 10px; font-weight: 800; color: #64748b;
                 text-transform: uppercase; letter-spacing: .8px;
-                margin-bottom: 4px; padding-left: 2px;
+                margin-bottom: 6px; padding-left: 2px;
             }
             .mc-panel {
-                background: #0f172a; border: 1px solid #1e293b;
+                background: #f8fafc; border: 1px solid #e5e7eb;
                 border-radius: 12px; padding: 11px;
-                max-height: 340px; overflow-y: auto;
+                max-height: 320px; overflow-y: auto;
             }
             .mc-panel-title {
-                font-size: 10px; font-weight: 700; color: #6366f1;
+                font-size: 10px; font-weight: 700; color: #4f46e5;
                 text-transform: uppercase; letter-spacing: .7px;
                 margin-bottom: 10px;
             }
             #priceCheckInput {
                 width: 100%; padding: 8px 44px 8px 12px;
-                background: #1e293b; border: 1.5px solid #334155;
-                border-radius: 10px; color: #e2e8f0; font-size: 13px;
+                background: #ffffff; border: 1.5px solid #cbd5e1;
+                border-radius: 10px; color: #1f2937; font-size: 13px;
                 box-sizing: border-box; outline: none;
                 transition: border-color .2s, box-shadow .2s;
             }
             #priceCheckInput:focus {
                 border-color: #6366f1; box-shadow: 0 0 0 3px #6366f118;
             }
-            #priceCheckInput::placeholder { color: #334155; }
+            #priceCheckInput::placeholder { color: #94a3b8; }
+            #priceCheckContainer select,
+            #priceCheckContainer input[type="range"] { accent-color:#4f46e5; }
+            #priceCheckContainer label { color:#475569 !important; }
+            #priceCheckContainer .mc-panel input[type="text"],
+            #priceCheckContainer .mc-panel textarea,
+            #priceCheckContainer .mc-panel select { background:#ffffff !important; color:#334155 !important; border-color:#cbd5e1 !important; }
             #priceCheckResult {
-                flex: 1; width: 100%; resize: none;
-                background: #080e1a; border: 1.5px solid #1a2332;
+                flex: none; width: 100%; height: 148px; resize: vertical;
+                background: #ffffff; border: 1.5px solid #e5e7eb;
                 border-radius: 10px; color: #64748b; font-size: 11.5px;
                 padding: 10px 12px; box-sizing: border-box; line-height: 1.65;
                 font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
                 outline: none; transition: border-color .2s;
-                min-height: 180px;
+                min-height: 110px; max-height: 42vh;
             }
-            #priceCheckResult:focus { border-color: #1e293b; color: #94a3b8; }
-            #hatikoRequestStatus { color:#94a3b8; font-size:10px; min-height:14px; }
+            #priceCheckResult:focus { border-color: #cbd5e1; color: #475569; }
+            #hatikoRequestStatus { display:none; color:#475569; font-size:10px; min-height:14px; padding:5px 8px; border-radius:7px; background:#f1f5f9; border:1px solid #e2e8f0; }
+            #hatikoRequestStatus[data-state] { display:block; }
+            #hatikoRequestStatus[data-state="busy"] { color:#1d4ed8; background:#dbeafe; }
+            #hatikoRequestStatus[data-state="ok"] { color:#166534; background:#dcfce7; }
+            #hatikoRequestStatus[data-state="warn"] { color:#92400e; background:#fef3c7; }
+            #hatikoRequestStatus[data-state="error"] { color:#991b1b; background:#fee2e2; }
             .mc-links-panel {
                 display:none; max-height:150px; overflow-y:auto;
-                background:#080e1a; border:1px solid #1a2332;
+                background:#ffffff; border:1px solid #e5e7eb;
                 border-radius:10px; padding:8px 10px; font-size:11px;
             }
-            .mc-links-panel a { display:block; color:#93c5fd; margin:4px 0; word-break:break-all; }
+            .mc-links-panel a { display:block; color:#2563eb; margin:4px 0; word-break:break-all; }
         `;
         document.head.appendChild(style);
 
@@ -1074,10 +1196,10 @@ function createPriceCheckWindow() {
         container.style.cssText = `
             position:fixed; top:14px; right:14px; width:430px;
             min-height:540px; max-height:93vh;
-            background:linear-gradient(160deg,#192035 0%,#0d1422 100%);
-            border:1px solid #1e2d45;
+            background:#ffffff;
+            border:1px solid #dbe3ee;
             border-radius:18px;
-            box-shadow:0 12px 48px rgba(0,0,0,.65), 0 0 0 1px #ffffff06;
+            box-shadow:0 16px 46px rgba(15,23,42,.22), 0 0 0 1px rgba(255,255,255,.9);
             padding:14px; display:none; z-index:99999;
             box-sizing:border-box; flex-direction:column; gap:10px;
             resize:both; overflow:auto;
@@ -1088,7 +1210,7 @@ function createPriceCheckWindow() {
             <div id="priceCheckHeader" style="
                 display:flex;align-items:center;justify-content:space-between;
                 cursor:move;user-select:none;padding-bottom:11px;
-                border-bottom:1px solid #1a2840;
+                border-bottom:1px solid #e2e8f0;
             ">
                 <div style="display:flex;align-items:center;gap:9px;">
                     <div style="
@@ -1098,13 +1220,13 @@ function createPriceCheckWindow() {
                         font-size:17px;box-shadow:0 3px 10px #6366f138;
                     ">🐱</div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#e2e8f0;line-height:1.2;">Мемный чат</div>
-                        <div style="font-size:9.5px;color:#334155;letter-spacing:.6px;margin-top:1px;">v5.0.0</div>
+                        <div style="font-size:14px;font-weight:700;color:#111827;line-height:1.2;">Мемный чат</div>
+                        <div id="memchatVersion" style="font-size:9.5px;color:#64748b;letter-spacing:.6px;margin-top:1px;"></div>
                     </div>
                 </div>
                 <button id="priceCheckCloseButton" style="
                     width:29px;height:29px;border-radius:8px;border:none;
-                    background:#1a2535;color:#475569;font-size:13px;
+                    background:#f1f5f9;color:#64748b;font-size:13px;
                     cursor:pointer;transition:all .18s;
                     display:flex;align-items:center;justify-content:center;flex-shrink:0;
                 ">✕</button>
@@ -1121,7 +1243,7 @@ function createPriceCheckWindow() {
 
             <!-- ── Лог ── -->
             <textarea id="priceCheckResult" readonly spellcheck="false"></textarea>
-            <div id="hatikoRequestStatus"></div>
+            <div id="hatikoRequestStatus" role="status" aria-live="polite"></div>
             <button id="hatikoReopenPickerButton" type="button" style="display:none;padding:5px 8px;border:1px solid #475569;border-radius:7px;background:#1e293b;color:#cbd5e1;cursor:pointer;">↶ Выбрать другой товар</button>
             <div id="hatikoLinksPanel" class="mc-links-panel"></div>
 
@@ -1204,6 +1326,7 @@ function createPriceCheckWindow() {
 
         document.body.appendChild(container);
         window.priceCheckContainer = container;
+        document.getElementById('memchatVersion').textContent = `v${MEMCHAT_VERSION}${typeof MEMCHAT_BUILD !== 'undefined' ? `-${MEMCHAT_BUILD}` : ''}`;
         setupEventListeners();
         setupGlobalClearTextFunctionality();
         setupHatikoLinksSetting();
@@ -1220,7 +1343,13 @@ function createPriceCheckWindow() {
 
 function updateHatikoStatus(message) {
     const status = document.getElementById('hatikoRequestStatus');
-    if (status) status.textContent = `🐶 ${message}`;
+    if (status) {
+        status.textContent = `🐶 ${message}`;
+        const lower = String(message).toLowerCase();
+        status.dataset.state = /ошибка|не найден|недоступ/.test(lower) ? 'error'
+            : /fallback|переключаюсь|не авториз/.test(lower) ? 'warn'
+            : /готово/.test(lower) ? 'ok' : 'busy';
+    }
     debugLog('hatiko-status', message);
 }
 
@@ -1395,6 +1524,13 @@ function setupEventListeners() {
     // Enter в поле ввода
     document.getElementById('priceCheckInput').addEventListener('keypress', e => {
         if (e.key === 'Enter' && currentAction) executeCurrentAction();
+    });
+
+    document.getElementById('priceCheckInput').addEventListener('keydown', e => {
+        if (e.key === 'Escape') e.currentTarget.value = '';
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeHatikoProductPicker();
     });
 
     // Кнопки с data-action (переключаемые)

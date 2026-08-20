@@ -101,6 +101,8 @@ function parseProductPage(html) {
 function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (!query) return;
+    const requestId = ++activeRequestId;
+    clearResultForNewRequest();
     addToChatHistory('user', query, '🐶 Hatiko');
     if (hatikoSearchMode === 'panel' || (hatikoSearchMode === 'auto' && /^\d+$/.test(query))) {
         updateHatikoStatus('Проверяю Panel Hatiko…');
@@ -111,20 +113,20 @@ function checkHatiko() {
                 addToChatHistory('bot', message, '🏪 Panel');
             } else if (hatikoSearchMode === 'auto') {
                 updateHatikoStatus('Panel не нашёл, переключаюсь на Hatiko…');
-                checkHatikoWebsite(query);
+                checkHatikoWebsite(query, requestId);
             } else addToChatHistory('bot', 'Panel: товар не найден', '🏪 Panel');
         }, error => {
             if (hatikoSearchMode === 'auto') {
                 updateHatikoStatus('Panel недоступна, переключаюсь на Hatiko…');
-                checkHatikoWebsite(query);
+                checkHatikoWebsite(query, requestId);
             } else addToChatHistory('bot', error.message, '🏪 Panel');
         });
         return;
     }
-    checkHatikoWebsite(query);
+    checkHatikoWebsite(query, requestId);
 }
 
-function checkHatikoWebsite(query) {
+function checkHatikoWebsite(query, requestId) {
     updateHatikoStatus('Ищу товары…');
 
     // Шаг 1: ищем товар через поиск Саратова
@@ -133,6 +135,7 @@ function checkHatikoWebsite(query) {
     fetchServerData(
         searchUrl,
         (searchResp) => {
+            if (requestId !== activeRequestId) return;
             const products = parseSearchResults(searchResp.responseText, BASE_URLS[0]);
 
             if (!products.length) {
@@ -148,6 +151,7 @@ function checkHatikoWebsite(query) {
 
             products.forEach((product, index) => {
                 checkHatikoProduct(product, result => {
+                    if (requestId !== activeRequestId) return;
                     results[index] = result;
                     completed++;
                     if (completed !== products.length) return;
@@ -193,10 +197,11 @@ function checkHatikoBonuses() {
     updateHatikoStatus('Проверяю бонусы в Panel…');
     panelCheckBonuses(phone, data => {
         updateHatikoStatus('Бонусы: готово');
+        const bonus = data.bonus ?? data.bonuses ?? data.affiliate_bonus ?? 0;
         addToChatHistory('bot', [
             `Телефон: ${data.phone || phone}`,
-            `Клиент: ${data.name || '—'}`,
-            `Бонусы: ${Math.round(Number(data.bonus || 0))}`
+            `Клиент: ${data.name || data.customer_name || '—'}`,
+            `Бонусы: ${Math.round(Number(bonus))}`
         ].join('\n'), '🎁 Бонусы');
     }, error => {
         updateHatikoStatus('Ошибка проверки бонусов');

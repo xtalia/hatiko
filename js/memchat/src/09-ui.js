@@ -7,11 +7,11 @@ function createPriceCheckWindow() {
             #priceCheckContainer {
                 font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
                 font-size: 13px;
-                color: #e2e8f0;
+                color: #1f2937;
             }
             #priceCheckContainer *::-webkit-scrollbar { width: 4px; height: 4px; }
-            #priceCheckContainer *::-webkit-scrollbar-track { background: #0f172a; }
-            #priceCheckContainer *::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+            #priceCheckContainer *::-webkit-scrollbar-track { background: #f1f5f9; }
+            #priceCheckContainer *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
             #priceCheckContainer *::-webkit-scrollbar-thumb:hover { background: #6366f1; }
 
             .mc-btn {
@@ -36,48 +36,59 @@ function createPriceCheckWindow() {
                 transform: translateY(-1px) !important;
             }
             .mc-section-label {
-                font-size: 9px; font-weight: 700; color: #334155;
+                font-size: 10px; font-weight: 800; color: #64748b;
                 text-transform: uppercase; letter-spacing: .8px;
-                margin-bottom: 4px; padding-left: 2px;
+                margin-bottom: 6px; padding-left: 2px;
             }
             .mc-panel {
-                background: #0f172a; border: 1px solid #1e293b;
+                background: #f8fafc; border: 1px solid #e5e7eb;
                 border-radius: 12px; padding: 11px;
-                max-height: 340px; overflow-y: auto;
+                max-height: 320px; overflow-y: auto;
             }
             .mc-panel-title {
-                font-size: 10px; font-weight: 700; color: #6366f1;
+                font-size: 10px; font-weight: 700; color: #4f46e5;
                 text-transform: uppercase; letter-spacing: .7px;
                 margin-bottom: 10px;
             }
             #priceCheckInput {
                 width: 100%; padding: 8px 44px 8px 12px;
-                background: #1e293b; border: 1.5px solid #334155;
-                border-radius: 10px; color: #e2e8f0; font-size: 13px;
+                background: #ffffff; border: 1.5px solid #cbd5e1;
+                border-radius: 10px; color: #1f2937; font-size: 13px;
                 box-sizing: border-box; outline: none;
                 transition: border-color .2s, box-shadow .2s;
             }
             #priceCheckInput:focus {
                 border-color: #6366f1; box-shadow: 0 0 0 3px #6366f118;
             }
-            #priceCheckInput::placeholder { color: #334155; }
+            #priceCheckInput::placeholder { color: #94a3b8; }
+            #priceCheckContainer select,
+            #priceCheckContainer input[type="range"] { accent-color:#4f46e5; }
+            #priceCheckContainer label { color:#475569 !important; }
+            #priceCheckContainer .mc-panel input[type="text"],
+            #priceCheckContainer .mc-panel textarea,
+            #priceCheckContainer .mc-panel select { background:#ffffff !important; color:#334155 !important; border-color:#cbd5e1 !important; }
             #priceCheckResult {
-                flex: 1; width: 100%; resize: none;
-                background: #080e1a; border: 1.5px solid #1a2332;
+                flex: none; width: 100%; height: 148px; resize: vertical;
+                background: #ffffff; border: 1.5px solid #e5e7eb;
                 border-radius: 10px; color: #64748b; font-size: 11.5px;
                 padding: 10px 12px; box-sizing: border-box; line-height: 1.65;
                 font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
                 outline: none; transition: border-color .2s;
-                min-height: 180px;
+                min-height: 110px; max-height: 42vh;
             }
-            #priceCheckResult:focus { border-color: #1e293b; color: #94a3b8; }
-            #hatikoRequestStatus { color:#94a3b8; font-size:10px; min-height:14px; }
+            #priceCheckResult:focus { border-color: #cbd5e1; color: #475569; }
+            #hatikoRequestStatus { display:none; color:#475569; font-size:10px; min-height:14px; padding:5px 8px; border-radius:7px; background:#f1f5f9; border:1px solid #e2e8f0; }
+            #hatikoRequestStatus[data-state] { display:block; }
+            #hatikoRequestStatus[data-state="busy"] { color:#1d4ed8; background:#dbeafe; }
+            #hatikoRequestStatus[data-state="ok"] { color:#166534; background:#dcfce7; }
+            #hatikoRequestStatus[data-state="warn"] { color:#92400e; background:#fef3c7; }
+            #hatikoRequestStatus[data-state="error"] { color:#991b1b; background:#fee2e2; }
             .mc-links-panel {
                 display:none; max-height:150px; overflow-y:auto;
-                background:#080e1a; border:1px solid #1a2332;
+                background:#ffffff; border:1px solid #e5e7eb;
                 border-radius:10px; padding:8px 10px; font-size:11px;
             }
-            .mc-links-panel a { display:block; color:#93c5fd; margin:4px 0; word-break:break-all; }
+            .mc-links-panel a { display:block; color:#2563eb; margin:4px 0; word-break:break-all; }
         `;
         document.head.appendChild(style);
 
@@ -86,10 +97,10 @@ function createPriceCheckWindow() {
         container.style.cssText = `
             position:fixed; top:14px; right:14px; width:430px;
             min-height:540px; max-height:93vh;
-            background:linear-gradient(160deg,#192035 0%,#0d1422 100%);
-            border:1px solid #1e2d45;
+            background:#ffffff;
+            border:1px solid #dbe3ee;
             border-radius:18px;
-            box-shadow:0 12px 48px rgba(0,0,0,.65), 0 0 0 1px #ffffff06;
+            box-shadow:0 16px 46px rgba(15,23,42,.22), 0 0 0 1px rgba(255,255,255,.9);
             padding:14px; display:none; z-index:99999;
             box-sizing:border-box; flex-direction:column; gap:10px;
             resize:both; overflow:auto;
@@ -100,7 +111,7 @@ function createPriceCheckWindow() {
             <div id="priceCheckHeader" style="
                 display:flex;align-items:center;justify-content:space-between;
                 cursor:move;user-select:none;padding-bottom:11px;
-                border-bottom:1px solid #1a2840;
+                border-bottom:1px solid #e2e8f0;
             ">
                 <div style="display:flex;align-items:center;gap:9px;">
                     <div style="
@@ -110,13 +121,13 @@ function createPriceCheckWindow() {
                         font-size:17px;box-shadow:0 3px 10px #6366f138;
                     ">🐱</div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#e2e8f0;line-height:1.2;">Мемный чат</div>
-                        <div style="font-size:9.5px;color:#334155;letter-spacing:.6px;margin-top:1px;">v5.0.0</div>
+                        <div style="font-size:14px;font-weight:700;color:#111827;line-height:1.2;">Мемный чат</div>
+                        <div id="memchatVersion" style="font-size:9.5px;color:#64748b;letter-spacing:.6px;margin-top:1px;"></div>
                     </div>
                 </div>
                 <button id="priceCheckCloseButton" style="
                     width:29px;height:29px;border-radius:8px;border:none;
-                    background:#1a2535;color:#475569;font-size:13px;
+                    background:#f1f5f9;color:#64748b;font-size:13px;
                     cursor:pointer;transition:all .18s;
                     display:flex;align-items:center;justify-content:center;flex-shrink:0;
                 ">✕</button>
@@ -133,7 +144,7 @@ function createPriceCheckWindow() {
 
             <!-- ── Лог ── -->
             <textarea id="priceCheckResult" readonly spellcheck="false"></textarea>
-            <div id="hatikoRequestStatus"></div>
+            <div id="hatikoRequestStatus" role="status" aria-live="polite"></div>
             <button id="hatikoReopenPickerButton" type="button" style="display:none;padding:5px 8px;border:1px solid #475569;border-radius:7px;background:#1e293b;color:#cbd5e1;cursor:pointer;">↶ Выбрать другой товар</button>
             <div id="hatikoLinksPanel" class="mc-links-panel"></div>
 
@@ -216,6 +227,7 @@ function createPriceCheckWindow() {
 
         document.body.appendChild(container);
         window.priceCheckContainer = container;
+        document.getElementById('memchatVersion').textContent = `v${MEMCHAT_VERSION}${typeof MEMCHAT_BUILD !== 'undefined' ? `-${MEMCHAT_BUILD}` : ''}`;
         setupEventListeners();
         setupGlobalClearTextFunctionality();
         setupHatikoLinksSetting();
@@ -232,7 +244,13 @@ function createPriceCheckWindow() {
 
 function updateHatikoStatus(message) {
     const status = document.getElementById('hatikoRequestStatus');
-    if (status) status.textContent = `🐶 ${message}`;
+    if (status) {
+        status.textContent = `🐶 ${message}`;
+        const lower = String(message).toLowerCase();
+        status.dataset.state = /ошибка|не найден|недоступ/.test(lower) ? 'error'
+            : /fallback|переключаюсь|не авториз/.test(lower) ? 'warn'
+            : /готово/.test(lower) ? 'ok' : 'busy';
+    }
     debugLog('hatiko-status', message);
 }
 

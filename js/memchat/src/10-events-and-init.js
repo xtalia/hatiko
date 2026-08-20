@@ -10,6 +10,13 @@ function setupEventListeners() {
         if (e.key === 'Enter' && currentAction) executeCurrentAction();
     });
 
+    document.getElementById('priceCheckInput').addEventListener('keydown', e => {
+        if (e.key === 'Escape') e.currentTarget.value = '';
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeHatikoProductPicker();
+    });
+
     // Кнопки с data-action (переключаемые)
     container.querySelectorAll('[data-action]').forEach(btn => {
         btn.addEventListener('click', e => {

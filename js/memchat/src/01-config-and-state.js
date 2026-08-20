@@ -1,5 +1,7 @@
 'use strict';
 
+const MEMCHAT_VERSION = '5.3.0';
+
 // ─── Константы ───────────────────────────────────────────────────────────────
 const BASE_URLS = [
     "https://hatiko.ru",
@@ -67,6 +69,7 @@ let scheduleReplacements = {};
 let currentHatikoPathname = '';
 let lastHatikoResults = [];
 let hatikoSearchMode = 'auto';
+let activeRequestId = 0;
 
 const DEBUG_STORAGE_KEY = 'memchat:debug';
 

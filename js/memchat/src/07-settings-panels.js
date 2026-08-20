@@ -158,7 +158,7 @@ function _appendRulesPanelFooter(panel, type) {
     ));
 
     addRow.appendChild(mkBtn('↺ Сброс',
-        'padding:4px 8px;background:#1e293b;border:1px solid #475569;border-radius:7px;color:#94a3b8;font-size:11px;cursor:pointer;',
+        'padding:4px 8px;background:#ffffff;border:1px solid #cbd5e1;border-radius:7px;color:#475569;font-size:11px;cursor:pointer;',
         () => {
             if (!confirm('Сбросить к значениям по умолчанию?')) return;
             if (isCalc) { calcRules = JSON.parse(JSON.stringify(DEFAULT_CALC_RULES)); saveCalcRules(); buildCalcRulesPanel(); }
@@ -167,7 +167,7 @@ function _appendRulesPanelFooter(panel, type) {
     ));
 
     addRow.appendChild(mkBtn('{ } JSON',
-        'padding:4px 8px;background:#1e293b;border:1px solid #475569;border-radius:7px;color:#94a3b8;font-size:11px;cursor:pointer;',
+        'padding:4px 8px;background:#ffffff;border:1px solid #cbd5e1;border-radius:7px;color:#475569;font-size:11px;cursor:pointer;',
         () => {
             const ja = document.getElementById(jsonAreaId);
             if (ja.style.display === 'none') {
@@ -184,7 +184,7 @@ function _appendRulesPanelFooter(panel, type) {
     // JSON textarea
     const ja = document.createElement('textarea');
     ja.id = jsonAreaId;
-    ja.style.cssText = 'display:none;width:100%;height:110px;margin-top:7px;padding:7px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#a5f3fc;font-size:11px;font-family:monospace;box-sizing:border-box;resize:vertical;outline:none;';
+    ja.style.cssText = 'display:none;width:100%;height:110px;margin-top:7px;padding:7px;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;color:#334155;font-size:11px;font-family:monospace;box-sizing:border-box;resize:vertical;outline:none;';
     ja.spellcheck = false;
     ja.addEventListener('blur', () => {
         try {

@@ -68,7 +68,7 @@ function applyDiscountOrMarkup() {
     }
 
     const result = op === '-' ? orig - diff : orig + diff;
-    const pct    = Math.abs(diff / orig * 100).toFixed(2);
+    const pct    = Math.abs(diff / orig * 100).toFixed(10);
     const label  = op === '-' ? '🎉 Скидка' : '📈 Наценка';
     const verb   = op === '-' ? 'Скидка'    : 'Наценка';
 

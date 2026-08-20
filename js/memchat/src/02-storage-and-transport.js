@@ -76,16 +76,72 @@ function saveHatikoSearchMode(mode) {
     localStorage.setItem(storageKey('hatikoSearchMode_v1'), mode);
 }
 
+function panelCsrfStorageKey() {
+    return storageKey('panelCsrf_v1');
+}
+
+function loadPanelCsrf() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(panelCsrfStorageKey()) || 'null');
+        if (!saved?.token || !saved?.savedAt || Date.now() - saved.savedAt > 30 * 60 * 1000) return '';
+        return saved.token;
+    } catch { return ''; }
+}
+
+function savePanelCsrf(token) {
+    if (!token) return;
+    try { localStorage.setItem(panelCsrfStorageKey(), JSON.stringify({ token, savedAt: Date.now() })); }
+    catch (error) { debugError('storage', 'Не удалось сохранить CSRF Panel', error); }
+}
+
+function clearPanelCsrf() {
+    try { localStorage.removeItem(panelCsrfStorageKey()); } catch { /* storage unavailable */ }
+}
+
+function ensurePanelCsrf(onSuccess, onError) {
+    const cached = loadPanelCsrf();
+    if (cached) { onSuccess(cached); return; }
+    panelRequest('/search', {}, response => {
+        const token = parsePanelCsrf(response.responseText);
+        if (!token) {
+            clearPanelCsrf();
+            onError(new Error('Panel: нет авторизации. Войдите в panel.hatiko.ru.'));
+            return;
+        }
+        savePanelCsrf(token);
+        onSuccess(token);
+    }, onError);
+}
+
 function panelRequest(path, options, onSuccess, onError) {
     GM_xmlhttpRequest({
         method: options?.method || 'GET',
         url: `https://panel.hatiko.ru${path}`,
-        headers: { Accept: 'application/json, text/html;q=0.9', ...(options?.headers || {}) },
+        headers: {
+            Accept: 'application/json, text/html;q=0.9',
+            Referer: 'https://panel.hatiko.ru/search',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(options?.headers || {})
+        },
         data: options?.data,
         timeout: 30000,
-        onload: response => response.status >= 200 && response.status < 300
-            ? onSuccess(response)
-            : onError(new Error(`Panel HTTP ${response.status}`), response),
+        anonymous: false,
+        onload: response => {
+            const contentType = response.responseHeaders?.match(/content-type:\s*([^\r\n]+)/i)?.[1] || '';
+            const raw = response.responseText || '';
+            const isHtml = /^\s*<html/i.test(raw) || /noindex, noarchive|ajaxload\.info|gorizontal-vertikal/i.test(raw);
+            debugLog('panel-response', { path, status: response.status, contentType, isHtml });
+            if (response.status >= 200 && response.status < 300 && !isHtml) {
+                onSuccess(response);
+            } else if (isHtml) {
+                const login = /\/login|вход|авторизац/i.test(raw);
+                onError(new Error(login
+                    ? 'Panel: нет авторизации. Войдите в panel.hatiko.ru.'
+                    : 'Panel: вернула HTML вместо JSON. Проверь авторизацию Panel.'), response);
+            } else {
+                onError(new Error(`Panel HTTP ${response.status}`), response);
+            }
+        },
         ontimeout: () => onError(new Error('Panel: таймаут запроса')),
         onerror: error => onError(new Error(`Panel: ошибка сети ${error}`))
     });
@@ -98,26 +154,65 @@ function parsePanelCsrf(html) {
     return input ? input[1] : '';
 }
 
+function parsePanelJson(response) {
+    const raw = String(response.responseText || response.response || '')
+        .replace(/^\uFEFF/, '')
+        .trim();
+    if (!raw) throw new Error('Panel: пустой ответ');
+    try {
+        return JSON.parse(raw);
+    } catch (error) {
+        debugError('panel-json', {
+            status: response.status,
+            contentType: response.responseHeaders?.match(/content-type:\s*([^\\r\\n]+)/i)?.[1] || '',
+            preview: raw.slice(0, 160)
+        });
+        throw new Error('Panel: некорректный JSON-ответ');
+    }
+}
+
 function panelSearch(query, onSuccess, onError) {
-    panelRequest('/search', {}, pageResponse => {
-        const csrf = parsePanelCsrf(pageResponse.responseText);
-        if (!csrf) { onError(new Error('Panel: не найден CSRF-токен. Возможно, нужна авторизация.')); return; }
-        panelRequest('/api/search', {
+    ensurePanelCsrf(csrf => {
+        const request = () => panelRequest('/api/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
             data: JSON.stringify({ search_type: 'article', query: String(query).trim(), cities_filter: [], stores_filter: [], show_external_code: true })
         }, response => {
-            try { onSuccess(JSON.parse(response.responseText)); }
-            catch { onError(new Error('Panel: некорректный JSON-ответ')); }
-        }, onError);
+            try { onSuccess(parsePanelJson(response)); }
+            catch (error) { onError(error); }
+        }, (error, response) => {
+            if (response?.status === 419 || response?.status === 401 || response?.status === 403) {
+                clearPanelCsrf();
+                onError(new Error('Panel: авторизация истекла. Войдите в panel.hatiko.ru.'));
+                return;
+            }
+            onError(error);
+        });
+        request();
     }, onError);
 }
 
 function panelCheckBonuses(phone, onSuccess, onError) {
-    const normalized = String(phone || '').replace(/\\D/g, '');
-    panelRequest(`/api/bonuses/check/${encodeURIComponent(Number(normalized))}`, {}, response => {
-        try { onSuccess(JSON.parse(response.responseText)); }
-        catch { onError(new Error('Panel: некорректный JSON-ответ')); }
+    const normalized = String(phone || '').replace(/\D/g, '');
+    if (!normalized) {
+        onError(new Error('Panel: введите номер телефона'));
+        return;
+    }
+    ensurePanelCsrf(csrf => {
+        const request = () => panelRequest(`/api/bonuses/check/${encodeURIComponent(Number(normalized))}`, {
+            headers: { 'X-CSRF-TOKEN': csrf }
+        }, response => {
+            try { onSuccess(parsePanelJson(response)); }
+            catch (error) { onError(error); }
+        }, (error, response) => {
+            if (response?.status === 419 || response?.status === 401 || response?.status === 403) {
+                clearPanelCsrf();
+                onError(new Error('Panel: авторизация истекла. Войдите в panel.hatiko.ru.'));
+                return;
+            }
+            onError(error);
+        });
+        request();
     }, onError);
 }
 

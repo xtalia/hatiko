@@ -25,3 +25,11 @@ function clearChat() {
     addToChatHistory('system', 'Чат очищен', '🧹');
 }
 
+function clearResultForNewRequest() {
+    const ta = document.getElementById('priceCheckResult');
+    if (ta) ta.value = '';
+    document.getElementById('hatikoLinksPanel')?.replaceChildren();
+    document.getElementById('hatikoLinksPanel')?.style.setProperty('display', 'none');
+    document.getElementById('hatikoReopenPickerButton')?.style.setProperty('display', 'none');
+}
+
