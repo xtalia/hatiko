@@ -142,6 +142,7 @@ function createPriceCheckWindow() {
                 <div class="mc-section-label">Поиск и расчёт</div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px;">
                     <button class="mc-btn mc-btn-green"  data-action="checkHatiko">🐶 Hatiko</button>
+                    <button class="mc-btn mc-btn-green"  data-action="checkHatikoBonuses">🎁 Бонусы</button>
                     <button class="mc-btn mc-btn-indigo" data-action="calculator">🧮 Калькулятор</button>
                     <button class="mc-btn mc-btn-purple" data-action="calculator_reverse">🔄 Реверс</button>
                     <button class="mc-btn mc-btn-orange" data-action="calculator_discount">🎉 Скидка/+</button>
@@ -202,6 +203,14 @@ function createPriceCheckWindow() {
                     <input type="checkbox" id="showHatikoLinksCheckbox" style="accent-color:#6366f1;width:14px;height:14px;">
                     Показывать ссылки Hatiko
                 </label>
+                <label style="display:block;color:#94a3b8;font-size:12px;margin-top:10px;">
+                    Поиск цифровых запросов:
+                    <select id="hatikoSearchMode" style="display:block;width:100%;margin-top:5px;padding:5px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+                        <option value="auto">Сначала Panel, затем сайт</option>
+                        <option value="panel">Только Panel</option>
+                        <option value="hatiko">Только сайт Hatiko</option>
+                    </select>
+                </label>
             </div>
         `;
 
@@ -210,6 +219,7 @@ function createPriceCheckWindow() {
         setupEventListeners();
         setupGlobalClearTextFunctionality();
         setupHatikoLinksSetting();
+        setupHatikoSearchModeSetting();
         document.getElementById('hatikoReopenPickerButton').addEventListener('click', reopenHatikoProductPicker);
         buildCalcRulesPanel();
         buildSchedulePanel();
@@ -224,6 +234,14 @@ function updateHatikoStatus(message) {
     const status = document.getElementById('hatikoRequestStatus');
     if (status) status.textContent = `🐶 ${message}`;
     debugLog('hatiko-status', message);
+}
+
+function setupHatikoSearchModeSetting() {
+    const select = document.getElementById('hatikoSearchMode');
+    if (!select) return;
+    hatikoSearchMode = loadHatikoSearchMode();
+    select.value = hatikoSearchMode;
+    select.addEventListener('change', () => saveHatikoSearchMode(select.value));
 }
 
 function updateHatikoLinksPanel(pathname) {

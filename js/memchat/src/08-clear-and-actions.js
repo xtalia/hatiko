@@ -39,6 +39,7 @@ function executeCurrentAction() {
     debugLog('action', currentAction);
     switch (currentAction) {
         case 'checkHatiko':          checkHatiko();              break;
+        case 'checkHatikoBonuses':   checkHatikoBonuses();       break;
         case 'calculator':           calculateCredit();          break;
         case 'calculator_reverse':   calculateReverse();         break;
         case 'calculator_discount':  applyDiscountOrMarkup();    break;

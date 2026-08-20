@@ -8,6 +8,7 @@
 // @match        https://*.hatiko.ru/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
+// @connect      panel.hatiko.ru
 // ==/UserScript==
 
 // Production-файл собирается из js/memchat/src/*.js.

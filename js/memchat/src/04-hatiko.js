@@ -102,6 +102,29 @@ function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (!query) return;
     addToChatHistory('user', query, '🐶 Hatiko');
+    if (hatikoSearchMode === 'panel' || (hatikoSearchMode === 'auto' && /^\d+$/.test(query))) {
+        updateHatikoStatus('Проверяю Panel Hatiko…');
+        panelSearch(query, data => {
+            const message = formatPanelSearchResult(data);
+            if (message) {
+                updateHatikoStatus('Panel: готово');
+                addToChatHistory('bot', message, '🏪 Panel');
+            } else if (hatikoSearchMode === 'auto') {
+                updateHatikoStatus('Panel не нашёл, переключаюсь на Hatiko…');
+                checkHatikoWebsite(query);
+            } else addToChatHistory('bot', 'Panel: товар не найден', '🏪 Panel');
+        }, error => {
+            if (hatikoSearchMode === 'auto') {
+                updateHatikoStatus('Panel недоступна, переключаюсь на Hatiko…');
+                checkHatikoWebsite(query);
+            } else addToChatHistory('bot', error.message, '🏪 Panel');
+        });
+        return;
+    }
+    checkHatikoWebsite(query);
+}
+
+function checkHatikoWebsite(query) {
     updateHatikoStatus('Ищу товары…');
 
     // Шаг 1: ищем товар через поиск Саратова
@@ -146,6 +169,39 @@ function checkHatiko() {
             addToChatHistory('bot', 'Ошибка поиска: ' + err, '🐶 Hatiko');
         }
     );
+}
+
+function formatPanelSearchResult(data) {
+    const products = data?.results || [];
+    if (!products.length) return '';
+    return products.map(product => [
+        `Артикул: ${product.article || '—'}`,
+        product.external_code ? `ВК: ${product.external_code}` : null,
+        product.name || '—',
+        `Статус: ${product.status || '—'}`,
+        `Наличие: ${product.total_stock > 0 ? `${product.total_stock} шт.` : 'Нет'}`,
+        product.supplier_decision?.iz_nalichiya ? `Из наличия: ${product.supplier_decision.iz_nalichiya}` : null,
+        Object.entries(product.prices || {}).map(([city, price]) => `${city}: ${price ? `${price} ₽` : '—'}`).join('  •  '),
+        product.stock_formatted ? `\n${product.stock_formatted}` : null
+    ].filter(Boolean).join('\n')).join('\n\n---\n\n');
+}
+
+function checkHatikoBonuses() {
+    const phone = document.getElementById('priceCheckInput').value.trim();
+    if (!phone) return;
+    addToChatHistory('user', phone, '🎁 Бонусы');
+    updateHatikoStatus('Проверяю бонусы в Panel…');
+    panelCheckBonuses(phone, data => {
+        updateHatikoStatus('Бонусы: готово');
+        addToChatHistory('bot', [
+            `Телефон: ${data.phone || phone}`,
+            `Клиент: ${data.name || '—'}`,
+            `Бонусы: ${Math.round(Number(data.bonus || 0))}`
+        ].join('\n'), '🎁 Бонусы');
+    }, error => {
+        updateHatikoStatus('Ошибка проверки бонусов');
+        addToChatHistory('bot', error.message, '🎁 Бонусы');
+    });
 }
 
 function checkHatikoProduct(product, onComplete) {

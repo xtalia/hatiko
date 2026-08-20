@@ -8,6 +8,7 @@
 // @match        https://*.hatiko.ru/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
+// @connect      panel.hatiko.ru
 // ==/UserScript==
 
 // Production-файл собирается из js/memchat/src/*.js.
@@ -83,6 +84,7 @@ let calcRules     = [];
 let scheduleReplacements = {};
 let currentHatikoPathname = '';
 let lastHatikoResults = [];
+let hatikoSearchMode = 'auto';
 
 const DEBUG_STORAGE_KEY = 'memchat:debug';
 
@@ -186,6 +188,64 @@ function saveShowHatikoLinks(enabled) {
     } catch (error) {
         debugError('storage', 'Не удалось сохранить настройку ссылок Hatiko', error);
     }
+}
+
+function loadHatikoSearchMode() {
+    try {
+        const mode = localStorage.getItem(storageKey('hatikoSearchMode_v1'));
+        return ['auto', 'panel', 'hatiko'].includes(mode) ? mode : 'auto';
+    } catch { return 'auto'; }
+}
+
+function saveHatikoSearchMode(mode) {
+    if (!['auto', 'panel', 'hatiko'].includes(mode)) return;
+    hatikoSearchMode = mode;
+    localStorage.setItem(storageKey('hatikoSearchMode_v1'), mode);
+}
+
+function panelRequest(path, options, onSuccess, onError) {
+    GM_xmlhttpRequest({
+        method: options?.method || 'GET',
+        url: `https://panel.hatiko.ru${path}`,
+        headers: { Accept: 'application/json, text/html;q=0.9', ...(options?.headers || {}) },
+        data: options?.data,
+        timeout: 30000,
+        onload: response => response.status >= 200 && response.status < 300
+            ? onSuccess(response)
+            : onError(new Error(`Panel HTTP ${response.status}`), response),
+        ontimeout: () => onError(new Error('Panel: таймаут запроса')),
+        onerror: error => onError(new Error(`Panel: ошибка сети ${error}`))
+    });
+}
+
+function parsePanelCsrf(html) {
+    const meta = html.match(/<meta\b[^>]*name=["']csrf-token["'][^>]*content=["']([^"']+)["']/i);
+    if (meta) return meta[1];
+    const input = html.match(/<input\b[^>]*name=["']_token["'][^>]*value=["']([^"']+)["']/i);
+    return input ? input[1] : '';
+}
+
+function panelSearch(query, onSuccess, onError) {
+    panelRequest('/search', {}, pageResponse => {
+        const csrf = parsePanelCsrf(pageResponse.responseText);
+        if (!csrf) { onError(new Error('Panel: не найден CSRF-токен. Возможно, нужна авторизация.')); return; }
+        panelRequest('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+            data: JSON.stringify({ search_type: 'article', query: String(query).trim(), cities_filter: [], stores_filter: [], show_external_code: true })
+        }, response => {
+            try { onSuccess(JSON.parse(response.responseText)); }
+            catch { onError(new Error('Panel: некорректный JSON-ответ')); }
+        }, onError);
+    }, onError);
+}
+
+function panelCheckBonuses(phone, onSuccess, onError) {
+    const normalized = String(phone || '').replace(/\\D/g, '');
+    panelRequest(`/api/bonuses/check/${encodeURIComponent(Number(normalized))}`, {}, response => {
+        try { onSuccess(JSON.parse(response.responseText)); }
+        catch { onError(new Error('Panel: некорректный JSON-ответ')); }
+    }, onError);
 }
 
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
@@ -346,6 +406,29 @@ function checkHatiko() {
     const query = document.getElementById('priceCheckInput').value.trim();
     if (!query) return;
     addToChatHistory('user', query, '🐶 Hatiko');
+    if (hatikoSearchMode === 'panel' || (hatikoSearchMode === 'auto' && /^\d+$/.test(query))) {
+        updateHatikoStatus('Проверяю Panel Hatiko…');
+        panelSearch(query, data => {
+            const message = formatPanelSearchResult(data);
+            if (message) {
+                updateHatikoStatus('Panel: готово');
+                addToChatHistory('bot', message, '🏪 Panel');
+            } else if (hatikoSearchMode === 'auto') {
+                updateHatikoStatus('Panel не нашёл, переключаюсь на Hatiko…');
+                checkHatikoWebsite(query);
+            } else addToChatHistory('bot', 'Panel: товар не найден', '🏪 Panel');
+        }, error => {
+            if (hatikoSearchMode === 'auto') {
+                updateHatikoStatus('Panel недоступна, переключаюсь на Hatiko…');
+                checkHatikoWebsite(query);
+            } else addToChatHistory('bot', error.message, '🏪 Panel');
+        });
+        return;
+    }
+    checkHatikoWebsite(query);
+}
+
+function checkHatikoWebsite(query) {
     updateHatikoStatus('Ищу товары…');
 
     // Шаг 1: ищем товар через поиск Саратова
@@ -390,6 +473,39 @@ function checkHatiko() {
             addToChatHistory('bot', 'Ошибка поиска: ' + err, '🐶 Hatiko');
         }
     );
+}
+
+function formatPanelSearchResult(data) {
+    const products = data?.results || [];
+    if (!products.length) return '';
+    return products.map(product => [
+        `Артикул: ${product.article || '—'}`,
+        product.external_code ? `ВК: ${product.external_code}` : null,
+        product.name || '—',
+        `Статус: ${product.status || '—'}`,
+        `Наличие: ${product.total_stock > 0 ? `${product.total_stock} шт.` : 'Нет'}`,
+        product.supplier_decision?.iz_nalichiya ? `Из наличия: ${product.supplier_decision.iz_nalichiya}` : null,
+        Object.entries(product.prices || {}).map(([city, price]) => `${city}: ${price ? `${price} ₽` : '—'}`).join('  •  '),
+        product.stock_formatted ? `\n${product.stock_formatted}` : null
+    ].filter(Boolean).join('\n')).join('\n\n---\n\n');
+}
+
+function checkHatikoBonuses() {
+    const phone = document.getElementById('priceCheckInput').value.trim();
+    if (!phone) return;
+    addToChatHistory('user', phone, '🎁 Бонусы');
+    updateHatikoStatus('Проверяю бонусы в Panel…');
+    panelCheckBonuses(phone, data => {
+        updateHatikoStatus('Бонусы: готово');
+        addToChatHistory('bot', [
+            `Телефон: ${data.phone || phone}`,
+            `Клиент: ${data.name || '—'}`,
+            `Бонусы: ${Math.round(Number(data.bonus || 0))}`
+        ].join('\n'), '🎁 Бонусы');
+    }, error => {
+        updateHatikoStatus('Ошибка проверки бонусов');
+        addToChatHistory('bot', error.message, '🎁 Бонусы');
+    });
 }
 
 function checkHatikoProduct(product, onComplete) {
@@ -859,6 +975,7 @@ function executeCurrentAction() {
     debugLog('action', currentAction);
     switch (currentAction) {
         case 'checkHatiko':          checkHatiko();              break;
+        case 'checkHatikoBonuses':   checkHatikoBonuses();       break;
         case 'calculator':           calculateCredit();          break;
         case 'calculator_reverse':   calculateReverse();         break;
         case 'calculator_discount':  applyDiscountOrMarkup();    break;
@@ -1013,6 +1130,7 @@ function createPriceCheckWindow() {
                 <div class="mc-section-label">Поиск и расчёт</div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px;">
                     <button class="mc-btn mc-btn-green"  data-action="checkHatiko">🐶 Hatiko</button>
+                    <button class="mc-btn mc-btn-green"  data-action="checkHatikoBonuses">🎁 Бонусы</button>
                     <button class="mc-btn mc-btn-indigo" data-action="calculator">🧮 Калькулятор</button>
                     <button class="mc-btn mc-btn-purple" data-action="calculator_reverse">🔄 Реверс</button>
                     <button class="mc-btn mc-btn-orange" data-action="calculator_discount">🎉 Скидка/+</button>
@@ -1073,6 +1191,14 @@ function createPriceCheckWindow() {
                     <input type="checkbox" id="showHatikoLinksCheckbox" style="accent-color:#6366f1;width:14px;height:14px;">
                     Показывать ссылки Hatiko
                 </label>
+                <label style="display:block;color:#94a3b8;font-size:12px;margin-top:10px;">
+                    Поиск цифровых запросов:
+                    <select id="hatikoSearchMode" style="display:block;width:100%;margin-top:5px;padding:5px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+                        <option value="auto">Сначала Panel, затем сайт</option>
+                        <option value="panel">Только Panel</option>
+                        <option value="hatiko">Только сайт Hatiko</option>
+                    </select>
+                </label>
             </div>
         `;
 
@@ -1081,6 +1207,7 @@ function createPriceCheckWindow() {
         setupEventListeners();
         setupGlobalClearTextFunctionality();
         setupHatikoLinksSetting();
+        setupHatikoSearchModeSetting();
         document.getElementById('hatikoReopenPickerButton').addEventListener('click', reopenHatikoProductPicker);
         buildCalcRulesPanel();
         buildSchedulePanel();
@@ -1095,6 +1222,14 @@ function updateHatikoStatus(message) {
     const status = document.getElementById('hatikoRequestStatus');
     if (status) status.textContent = `🐶 ${message}`;
     debugLog('hatiko-status', message);
+}
+
+function setupHatikoSearchModeSetting() {
+    const select = document.getElementById('hatikoSearchMode');
+    if (!select) return;
+    hatikoSearchMode = loadHatikoSearchMode();
+    select.value = hatikoSearchMode;
+    select.addEventListener('change', () => saveHatikoSearchMode(select.value));
 }
 
 function updateHatikoLinksPanel(pathname) {

@@ -63,6 +63,64 @@ function saveShowHatikoLinks(enabled) {
     }
 }
 
+function loadHatikoSearchMode() {
+    try {
+        const mode = localStorage.getItem(storageKey('hatikoSearchMode_v1'));
+        return ['auto', 'panel', 'hatiko'].includes(mode) ? mode : 'auto';
+    } catch { return 'auto'; }
+}
+
+function saveHatikoSearchMode(mode) {
+    if (!['auto', 'panel', 'hatiko'].includes(mode)) return;
+    hatikoSearchMode = mode;
+    localStorage.setItem(storageKey('hatikoSearchMode_v1'), mode);
+}
+
+function panelRequest(path, options, onSuccess, onError) {
+    GM_xmlhttpRequest({
+        method: options?.method || 'GET',
+        url: `https://panel.hatiko.ru${path}`,
+        headers: { Accept: 'application/json, text/html;q=0.9', ...(options?.headers || {}) },
+        data: options?.data,
+        timeout: 30000,
+        onload: response => response.status >= 200 && response.status < 300
+            ? onSuccess(response)
+            : onError(new Error(`Panel HTTP ${response.status}`), response),
+        ontimeout: () => onError(new Error('Panel: таймаут запроса')),
+        onerror: error => onError(new Error(`Panel: ошибка сети ${error}`))
+    });
+}
+
+function parsePanelCsrf(html) {
+    const meta = html.match(/<meta\b[^>]*name=["']csrf-token["'][^>]*content=["']([^"']+)["']/i);
+    if (meta) return meta[1];
+    const input = html.match(/<input\b[^>]*name=["']_token["'][^>]*value=["']([^"']+)["']/i);
+    return input ? input[1] : '';
+}
+
+function panelSearch(query, onSuccess, onError) {
+    panelRequest('/search', {}, pageResponse => {
+        const csrf = parsePanelCsrf(pageResponse.responseText);
+        if (!csrf) { onError(new Error('Panel: не найден CSRF-токен. Возможно, нужна авторизация.')); return; }
+        panelRequest('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+            data: JSON.stringify({ search_type: 'article', query: String(query).trim(), cities_filter: [], stores_filter: [], show_external_code: true })
+        }, response => {
+            try { onSuccess(JSON.parse(response.responseText)); }
+            catch { onError(new Error('Panel: некорректный JSON-ответ')); }
+        }, onError);
+    }, onError);
+}
+
+function panelCheckBonuses(phone, onSuccess, onError) {
+    const normalized = String(phone || '').replace(/\\D/g, '');
+    panelRequest(`/api/bonuses/check/${encodeURIComponent(Number(normalized))}`, {}, response => {
+        try { onSuccess(JSON.parse(response.responseText)); }
+        catch { onError(new Error('Panel: некорректный JSON-ответ')); }
+    }, onError);
+}
+
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 function fetchServerData(url, onSuccess, onError) {
     debugLog('request', 'GET', url);

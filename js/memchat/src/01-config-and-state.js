@@ -66,6 +66,7 @@ let calcRules     = [];
 let scheduleReplacements = {};
 let currentHatikoPathname = '';
 let lastHatikoResults = [];
+let hatikoSearchMode = 'auto';
 
 const DEBUG_STORAGE_KEY = 'memchat:debug';
 
