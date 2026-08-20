@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Мемный чат с калькулятором
 // @namespace    http://tampermonkey.net/
-// @version      5.0.0
+// @version      5.2.0
 // @description  Улучшенный чат с функциями проверки цен, калькулятором и управлением через кнопки
 // @match        https://online.moysklad.ru/*
 // @match        https://*.bitrix24.ru/*
@@ -9,6 +9,11 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // ==/UserScript==
+
+// Production-файл собирается из js/memchat/src/*.js.
+
+
+/* ===== 01-config-and-state.js ===== */
 
 'use strict';
 
@@ -77,34 +82,92 @@ let clearTextEnabled = false;
 let calcRules     = [];
 let scheduleReplacements = {};
 
+const DEBUG_STORAGE_KEY = 'memchat:debug';
+
+function isDebugEnabled() {
+    try {
+        return localStorage.getItem(DEBUG_STORAGE_KEY) === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function debugLog(scope, ...args) {
+    if (isDebugEnabled()) console.debug(`[Memchat:${scope}]`, ...args);
+}
+
+function debugError(scope, ...args) {
+    console.error(`[Memchat:${scope}]`, ...args);
+}
+
+function toggleDebugMode() {
+    const enabled = !isDebugEnabled();
+    try {
+        localStorage.setItem(DEBUG_STORAGE_KEY, String(enabled));
+    } catch (error) {
+        debugError('debug', 'Не удалось сохранить режим отладки', error);
+    }
+    console.info(`[Memchat:debug] ${enabled ? 'включена' : 'выключена'}`);
+}
+
+function installDebugHandlers() {
+    window.addEventListener('error', event => {
+        debugError('uncaught', event.error || event.message, event.filename, event.lineno);
+    });
+    window.addEventListener('unhandledrejection', event => {
+        debugError('promise', event.reason);
+    });
+}
+
+/* ===== 02-storage-and-transport.js ===== */
+
 // ─── Загрузка / сохранение ────────────────────────────────────────────────────
+function storageKey(key) {
+    return `${typeof MEMCHAT_BUILD !== 'undefined' ? `memchat:${MEMCHAT_BUILD}:` : 'memchat:'}${key}`;
+}
+
 function loadCalcRules() {
     try {
-        const s = localStorage.getItem('calcRules_v2');
+        const key = storageKey('calcRules_v2');
+        const legacyKey = 'calcRules_v2';
+        const s = localStorage.getItem(key)
+            || (typeof MEMCHAT_BUILD === 'undefined' ? localStorage.getItem(legacyKey) : null);
         calcRules = s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULT_CALC_RULES));
+        if (s && !localStorage.getItem(key)) saveCalcRules();
     } catch { calcRules = JSON.parse(JSON.stringify(DEFAULT_CALC_RULES)); }
 }
 function saveCalcRules() {
-    localStorage.setItem('calcRules_v2', JSON.stringify(calcRules));
+    localStorage.setItem(storageKey('calcRules_v2'), JSON.stringify(calcRules));
 }
 
 function loadScheduleReplacements() {
     try {
-        const s = localStorage.getItem('scheduleReplacements_v1');
+        const key = storageKey('scheduleReplacements_v1');
+        const legacyKey = 'scheduleReplacements_v1';
+        const s = localStorage.getItem(key)
+            || (typeof MEMCHAT_BUILD === 'undefined' ? localStorage.getItem(legacyKey) : null);
         scheduleReplacements = s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULT_REPLACEMENTS));
+        if (s && !localStorage.getItem(key)) saveScheduleReplacements();
     } catch { scheduleReplacements = JSON.parse(JSON.stringify(DEFAULT_REPLACEMENTS)); }
 }
 function saveScheduleReplacements() {
-    localStorage.setItem('scheduleReplacements_v1', JSON.stringify(scheduleReplacements));
+    localStorage.setItem(storageKey('scheduleReplacements_v1'), JSON.stringify(scheduleReplacements));
 }
 
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 function fetchServerData(url, onSuccess, onError) {
+    debugLog('request', 'GET', url);
     GM_xmlhttpRequest({
         method: 'GET',
         url,
-        onload:  r => r.status === 200 ? onSuccess(r) : onError(`Ошибка: ${r.statusText}`),
-        onerror: e => onError(`Ошибка запроса: ${e}`)
+        onload:  r => {
+            debugLog('response', r.status, url);
+            r.status === 200 ? onSuccess(r) : onError(`Ошибка: ${r.statusText}`);
+        },
+        onerror: e => {
+            debugError('request', url, e);
+            onError(`Ошибка запроса: ${e}`);
+        }
     });
 }
 
@@ -113,6 +176,8 @@ function applyRule(cash, rule) {
     const rounded = Math.round(cash * rule.percent / 100 / rule.round) * rule.round;
     return rounded + (rule.extra || 0);
 }
+
+/* ===== 03-chat.js ===== */
 
 // ─── addToChatHistory ─────────────────────────────────────────────────────────
 function addToChatHistory(sender, message, emoji = '') {
@@ -140,6 +205,8 @@ function clearChat() {
     chatHistory = [];
     addToChatHistory('system', 'Чат очищен', '🧹');
 }
+
+/* ===== 04-hatiko.js ===== */
 
 // ─── HATIKO ───────────────────────────────────────────────────────────────────
 
@@ -268,9 +335,7 @@ function checkHatiko() {
     );
 }
 
-
-
-
+/* ===== 05-calculator.js ===== */
 
 // ─── Калькулятор ──────────────────────────────────────────────────────────────
 function calculateCredit() {
@@ -383,6 +448,8 @@ function copyText() {
     addToChatHistory('system', 'Нет ответов для копирования', '⚠️');
 }
 
+/* ===== 06-schedule.js ===== */
+
 // ─── Расписание ───────────────────────────────────────────────────────────────
 function fetchWhoWorksToday()    { addToChatHistory('user', 'Кто работает сегодня?', '👨‍💼 Сегодня'); fetchWhoWorks('today'); }
 function fetchWhoWorksTomorrow() { addToChatHistory('user', 'Кто работает завтра?',  '👨‍💼 Завтра');  fetchWhoWorks('tomorrow'); }
@@ -451,6 +518,8 @@ function formatOutputWithReplacements(text, replacements, day) {
     const dayName = day === 'today' ? 'Сегодня' : 'Завтра';
     return `📅 ${dayName} (${dateStr})\n\n${processed.join('\n')}`;
 }
+
+/* ===== 07-settings-panels.js ===== */
 
 // ─── Перетаскивание ───────────────────────────────────────────────────────────
 function startDrag(e) {
@@ -651,6 +720,8 @@ function _appendRulesPanelFooter(panel, type) {
     panel.appendChild(ja);
 }
 
+/* ===== 08-clear-and-actions.js ===== */
+
 // ─── Очистка текста ───────────────────────────────────────────────────────────
 function setupGlobalClearTextFunctionality() {
     const saved = localStorage.getItem('clearTextEnabled');
@@ -689,6 +760,7 @@ function updateClearTextButton() {
 
 // ─── Диспетчер действий ───────────────────────────────────────────────────────
 function executeCurrentAction() {
+    debugLog('action', currentAction);
     switch (currentAction) {
         case 'checkHatiko':          checkHatiko();              break;
         case 'calculator':           calculateCredit();          break;
@@ -698,6 +770,8 @@ function executeCurrentAction() {
         default: addToChatHistory('system', 'Выберите действие', '⚠️');
     }
 }
+
+/* ===== 09-ui.js ===== */
 
 // ─── Создание интерфейса ──────────────────────────────────────────────────────
 function createPriceCheckWindow() {
@@ -905,6 +979,8 @@ function createPriceCheckWindow() {
     document.querySelector('[data-action="checkHatiko"]').click();
 }
 
+/* ===== 10-events-and-init.js ===== */
+
 // ─── Обработчики событий ──────────────────────────────────────────────────────
 function setupEventListeners() {
     const container = window.priceCheckContainer;
@@ -983,11 +1059,15 @@ function closeChatWindow() {
 }
 
 function initialize() {
+    installDebugHandlers();
     loadCalcRules();
     loadScheduleReplacements();
     GM_registerMenuCommand('Открыть мемный чат', createPriceCheckWindow);
     GM_registerMenuCommand('Закрыть мемный чат', closeChatWindow);
+    GM_registerMenuCommand('Переключить отладку мемного чата', toggleDebugMode);
+    debugLog('init', 'initialized');
     console.log('Мемный чат v5.0.0 инициализирован');
 }
 
-window.addEventListener('load', initialize);
+// ─── Production entrypoint ───────────────────────────────────────────────────
+initialize();
