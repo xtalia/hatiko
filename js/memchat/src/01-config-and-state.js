@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMCHAT_VERSION = '5.3.0';
+const MEMCHAT_VERSION = '5.4.1';
 
 // ─── Константы ───────────────────────────────────────────────────────────────
 const BASE_URLS = [
